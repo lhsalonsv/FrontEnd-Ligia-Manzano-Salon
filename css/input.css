@@ -107,8 +107,10 @@
   .opcional { @apply text-13 font-normal text-texto-secundario; }
 
   /* Pestañas de filtro sobre una lista (Todos, Este mes...) */
-  .filtros { @apply flex gap-1 overflow-x-auto border-b border-borde-default; }
-  .filtro { @apply -mb-px inline-flex shrink-0 cursor-pointer gap-1.5 border-b-2 border-transparent px-3 py-2 text-sm font-semibold whitespace-nowrap text-texto-secundario hover:text-texto-principal; }
+  /* La línea de abajo es una sombra interna (no un borde) para que la pestaña activa la tape
+     sin salirse de la caja; así overflow-x-auto no muestra una barra vertical de 1 px. */
+  .filtros { @apply flex gap-1 overflow-x-auto overflow-y-hidden shadow-[inset_0_-1px_0_var(--color-borde-default)]; scrollbar-width: thin; }
+  .filtro { @apply inline-flex shrink-0 cursor-pointer gap-1.5 border-b-2 border-transparent px-3 py-2 text-sm font-semibold whitespace-nowrap text-texto-secundario hover:text-texto-principal; }
   .filtro span { @apply font-medium tabular-nums; }
   .filtro[aria-pressed="true"] { @apply border-neutro-900 text-texto-principal; }
 
@@ -132,7 +134,7 @@
   .aviso-exito { @apply bg-estado-exito-fondo text-estado-exito; }
 
   /* Lista de clientes: en celular solo nombre (y próxima cita desde sm); las demás columnas desde md */
-  .fila-cli { @apply grid items-center gap-3 px-4 sm:grid-cols-[1fr_140px] md:grid-cols-[1fr_96px_56px_88px_150px]; }
+  .fila-cli { @apply grid items-center gap-3 px-4 sm:grid-cols-[minmax(0,1fr)_140px] md:grid-cols-[minmax(0,1fr)_96px_56px_88px_150px]; }
   .ini { @apply grid size-8 shrink-0 place-items-center rounded-full bg-neutro-100 text-xs font-semibold; }
 
   /* Panel derecho (ficha o formulario) */

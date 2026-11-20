@@ -3,7 +3,8 @@
  * Único lugar donde vive la URL de la API y los interruptores de datos de prueba.
  */
 
-const esLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+// Live Server a veces abre en 127.0.0.2, 127.0.0.3...: todo 127.x es esta misma computadora
+const esLocal = window.location.hostname === 'localhost' || window.location.hostname.startsWith('127.');
 
 /** URL base del backend (Spring Boot). En local apunta al puerto 8080; en producción, a Render. */
 export const API_BASE_URL = esLocal

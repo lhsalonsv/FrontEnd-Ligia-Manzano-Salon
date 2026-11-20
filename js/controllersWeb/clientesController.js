@@ -197,7 +197,7 @@ async function mostrarFicha(idCliente, aviso = '') {
     <div class="panel-seccion text-sm">
       <h3 class="panel-titulo">Últimas visitas <span class="font-normal">${c.visitas12m} en 12 meses · ${dinero(c.gastado12m)}</span></h3>
       ${c.ultimasVisitas.length ? `<ul>${c.ultimasVisitas.map((v) => `
-        <li class="grid grid-cols-[56px_1fr_auto] gap-3 border-b border-neutro-100 py-2 last:border-0 tabular-nums">
+        <li class="grid grid-cols-[56px_minmax(0,1fr)_auto] gap-3 border-b border-neutro-100 py-2 last:border-0 tabular-nums">
           <span class="text-texto-secundario">${fechaCorta(v.fecha)}</span>
           <span>${escapar(v.descripcion)}<small class="block text-13 text-texto-secundario">${escapar(v.empleado)}</small></span>
           <b class="font-semibold">${dinero(v.total)}</b>
@@ -262,14 +262,14 @@ async function mostrarFormulario(cliente = null) {
           ${campo({ nombre: 'telefono', columna: 'telefono', etiqueta: 'Teléfono', obligatorio: true, control: entrada('telefono', c.telefono, 'type="tel" inputmode="tel" maxlength="30" placeholder="7000-0000" required') })}
           <div data-campo="dia_cumple">
             <span class="campo-etiqueta" id="et-cumple">Cumpleaños <span class="opcional">opcional</span></span>
-            <div class="grid grid-cols-[72px_1fr] gap-2" role="group" aria-labelledby="et-cumple">
+            <div class="grid grid-cols-[72px_minmax(0,1fr)] gap-2" role="group" aria-labelledby="et-cumple">
               <div class="campo-caja px-2"><select id="f-diaCumple" name="diaCumple" aria-label="Día" aria-describedby="error-diaCumple"><option value="">Día</option>${Array.from({ length: 31 }, (_, i) => `<option ${c.diaCumple === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select></div>
               <div class="campo-caja px-2" data-campo="mes_cumple"><select id="f-mesCumple" name="mesCumple" aria-label="Mes" aria-describedby="error-diaCumple"><option value="">Mes</option>${MESES.map((m, i) => `<option value="${i + 1}" ${c.mesCumple === i + 1 ? 'selected' : ''}>${m}</option>`).join('')}</select></div>
             </div>
             <p class="campo-error hidden" id="error-diaCumple"></p>
           </div>
         </div>
-        <div class="grid gap-4 sm:grid-cols-[1.4fr_1fr]">
+        <div class="grid gap-4 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
           ${campo({ nombre: 'correo', columna: 'correo', etiqueta: 'Correo', control: entrada('correo', c.correo, 'type="email" maxlength="100" placeholder="Para enviarle sus facturas"') })}
           ${campo({ nombre: 'numDocumento', columna: 'num_documento', etiqueta: 'DUI', control: entrada('numDocumento', c.numDocumento, 'inputmode="numeric" maxlength="10" placeholder="00000000-0"') })}
         </div>
@@ -284,7 +284,7 @@ async function mostrarFormulario(cliente = null) {
             <p class="campo-ayuda mt-0">Si llena uno de estos datos, se piden todos.</p>
             ${campo({ nombre: 'razonSocial', columna: 'razon_social', etiqueta: 'Razón social', obligatorio: true, control: entrada('razonSocial', c.razonSocial, 'maxlength="250"') })}
             ${campo({ nombre: 'nombreComercial', columna: 'nombre_comercial', etiqueta: 'Nombre comercial', control: entrada('nombreComercial', c.nombreComercial, 'maxlength="150"') })}
-            <div class="grid gap-4 sm:grid-cols-[1.35fr_1fr]">
+            <div class="grid gap-4 sm:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
               ${campo({ nombre: 'nit', columna: 'nit', etiqueta: 'NIT', obligatorio: true, control: entrada('nit', formatoNit(c.nit), 'inputmode="numeric" maxlength="17" placeholder="0000-000000-000-0"') })}
               ${campo({ nombre: 'nrc', columna: 'nrc', etiqueta: 'NRC', obligatorio: true, control: entrada('nrc', formatoNrc(c.nrc), 'inputmode="numeric" maxlength="9" placeholder="000000-0"') })}
             </div>
