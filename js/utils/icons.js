@@ -27,6 +27,12 @@ const TRAZOS = {
   salir: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
   menu: '<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>',
   cerrar: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  buscar: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  mas: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  advertencia: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  gota: '<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/>',
+  abajo: '<path d="m6 9 6 6 6-6"/>',
+  arriba: '<path d="m18 15-6-6-6 6"/>',
 };
 
 /** @param {keyof TRAZOS} nombre  @param {string} [clases] clases extra (p. ej. 'size-4') */

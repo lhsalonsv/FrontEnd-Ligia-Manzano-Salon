@@ -98,9 +98,19 @@
     @apply focus-within:border-neutro-900 focus-within:ring-1 focus-within:ring-neutro-900;
   }
   .campo-caja .icono { @apply size-[18px] text-texto-secundario; }
-  .campo-caja input { @apply min-w-0 flex-1 bg-transparent py-2 outline-none placeholder:text-texto-deshabilitado; }
-  .campo-caja[aria-invalid="true"] { @apply border-estado-error ring-1 ring-estado-error; }
+  .campo-caja :is(input, select, textarea) { @apply min-w-0 flex-1 bg-transparent py-2 outline-none placeholder:text-texto-deshabilitado; }
+  .campo-caja textarea { @apply min-h-16 resize-y; }
+  .campo-caja:has(textarea) { @apply items-start; }
+  .campo-caja:has([aria-invalid="true"]), .campo-caja[aria-invalid="true"] { @apply border-estado-error ring-1 ring-estado-error; }
   .campo-ayuda { @apply mt-1 text-13 text-texto-secundario; }
+  .campo-error { @apply mt-1 text-13 text-estado-error; }
+  .opcional { @apply text-13 font-normal text-texto-secundario; }
+
+  /* Pestañas de filtro sobre una lista (Todos, Este mes...) */
+  .filtros { @apply flex gap-1 overflow-x-auto border-b border-borde-default; }
+  .filtro { @apply -mb-px inline-flex shrink-0 cursor-pointer gap-1.5 border-b-2 border-transparent px-3 py-2 text-sm font-semibold whitespace-nowrap text-texto-secundario hover:text-texto-principal; }
+  .filtro span { @apply font-medium tabular-nums; }
+  .filtro[aria-pressed="true"] { @apply border-neutro-900 text-texto-principal; }
 
   /* Menú lateral */
   .nav-grupo { @apply flex flex-col gap-0.5; }
@@ -119,4 +129,18 @@
   .aviso-error { @apply bg-estado-error-fondo text-estado-error; }
   .aviso-info { @apply bg-estado-info-fondo text-estado-info; }
   .aviso-aviso { @apply bg-estado-aviso-fondo text-estado-aviso; }
+  .aviso-exito { @apply bg-estado-exito-fondo text-estado-exito; }
+
+  /* Lista de clientes: en celular solo nombre (y próxima cita desde sm); las demás columnas desde md */
+  .fila-cli { @apply grid items-center gap-3 px-4 sm:grid-cols-[1fr_140px] md:grid-cols-[1fr_96px_56px_88px_150px]; }
+  .ini { @apply grid size-8 shrink-0 place-items-center rounded-full bg-neutro-100 text-xs font-semibold; }
+
+  /* Panel derecho (ficha o formulario) */
+  .panel-seccion { @apply px-6; }
+  .panel-titulo { @apply mb-2 flex justify-between text-sm font-semibold text-texto-secundario; }
+  .separa { @apply mx-6 my-4 h-px bg-borde-default; }
+  .datos { @apply grid grid-cols-[104px_1fr] gap-3 px-6 text-15; }
+  .datos dt { @apply pt-px text-sm text-texto-secundario; }
+  .datos dd { @apply min-w-0 break-words; }
+  .datos dd small { @apply block text-sm text-texto-secundario; }
 }

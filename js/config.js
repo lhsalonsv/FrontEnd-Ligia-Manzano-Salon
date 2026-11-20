@@ -18,6 +18,8 @@ export const API_BASE_URL = esLocal
  */
 export const DATOS_PRUEBA = {
   auth: true,
+  clientes: true,
+  catalogos: true,
 };
 
 /** Minutos sin uso antes de cerrar la sesión (lo dice la pantalla de login). */

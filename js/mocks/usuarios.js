@@ -10,5 +10,5 @@ export const USUARIOS_PRUEBA = [
   { idUsuario: 4, nombreUsuario: 'auditor',       nombreCompleto: 'Sara Ramos',    rol: 'AUDITOR',       contrasena: 'demo1234' },
 ];
 
-/** Intentos antes de bloquear la cuenta (el bloqueo real lo hace el backend). */
-export const INTENTOS_MAXIMOS = 3;
+/** Intentos antes de bloquear la cuenta (el bloqueo real lo hace el backend; DISENO.md: al quinto fallo). */
+export const INTENTOS_MAXIMOS = 5;

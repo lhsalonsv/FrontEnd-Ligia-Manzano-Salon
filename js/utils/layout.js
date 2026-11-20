@@ -9,6 +9,7 @@
  * y su controlador llama a montarLayout().
  */
 import { icono } from './icons.js';
+import { escapar, iniciales } from './formato.js';
 import { exigirSesion, cerrarSesion, vigilarInactividad } from './session.js';
 
 /**
@@ -21,7 +22,7 @@ const MENU = [
     { id: 'inicio', texto: 'Inicio', href: 'inicio.html', listo: true },
     { id: 'agenda', texto: 'Agenda', href: 'agenda.html', listo: false },
     { id: 'pos', texto: 'Punto de venta', href: 'pos.html', listo: false },
-    { id: 'clientes', texto: 'Clientes', href: 'clientes.html', listo: false },
+    { id: 'clientes', texto: 'Clientes', href: 'clientes.html', listo: true },
   ],
   [
     { id: 'servicios', texto: 'Servicios', href: 'servicios.html', listo: false },
@@ -46,12 +47,6 @@ const NOMBRE_ROL = {
   CONTADOR: 'Contador',
   AUDITOR: 'Auditor',
 };
-
-const escapar = (texto) =>
-  String(texto ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-
-const iniciales = (nombre) =>
-  String(nombre ?? '?').split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
 
 function enlaceMenu(item, paginaActual, rol) {
   if (item.roles && !item.roles.includes(rol)) return '';
@@ -78,11 +73,15 @@ function htmlLateral(paginaActual, rol) {
     <nav class="flex flex-col gap-4" aria-label="Menú principal">${grupos}</nav>`;
 }
 
-function htmlBarra(titulo, usuario) {
+function htmlBarra(titulo, usuario, accion) {
+  const boton = accion
+    ? `<button type="button" id="${accion.id}" class="btn btn-primario h-9 px-3 sm:h-10 sm:px-4">${icono(accion.icono)}<span class="hidden sm:inline">${escapar(accion.texto)}</span></button>`
+    : '';
   return `
     <button type="button" id="btn-abrir-menu" class="-ml-2 rounded-chico p-2 hover:bg-fondo-sutil lg:hidden" aria-label="Abrir menú" aria-controls="lateral" aria-expanded="false">${icono('menu')}</button>
     <h1 class="text-xl">${escapar(titulo)}</h1>
     <div class="ml-auto flex items-center gap-4">
+      ${boton}
       <div class="flex items-center gap-3 text-sm leading-tight">
         <span class="grid size-9 place-items-center rounded-full bg-marca-carbon text-sm font-semibold text-texto-sobre-oscuro" aria-hidden="true">${escapar(iniciales(usuario.nombreCompleto))}</span>
         <div class="hidden sm:block">
@@ -94,8 +93,12 @@ function htmlBarra(titulo, usuario) {
     </div>`;
 }
 
-/** Monta menú y barra. Devuelve la sesión (o null si redirigió al login). */
-export function montarLayout() {
+/**
+ * Monta menú y barra. Devuelve la sesión (o null si redirigió al login).
+ * @param {{accion?: {id: string, texto: string, icono: string}}} [opciones]
+ *        accion: botón principal de la pantalla, a la derecha de la barra (p. ej. "Nuevo cliente").
+ */
+export function montarLayout({ accion } = {}) {
   const sesion = exigirSesion();
   if (!sesion) return null;
 
@@ -103,7 +106,7 @@ export function montarLayout() {
   const lateral = document.getElementById('lateral');
   const barra = document.getElementById('barra');
   lateral.innerHTML = htmlLateral(pagina, sesion.usuario.rol);
-  barra.innerHTML = htmlBarra(titulo, sesion.usuario);
+  barra.innerHTML = htmlBarra(titulo, sesion.usuario, accion);
   document.title = `${titulo} · Ligia Manzano Salón`;
 
   // Menú plegable en pantallas angostas (tablet de recepción)

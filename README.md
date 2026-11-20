@@ -14,13 +14,16 @@ Antes de publicar: `npm run build` (CSS minificado). En Vercel: Build Command `n
 
 Mientras el backend no existe, los servicios responden con datos de `js/mocks/`. Se controla por servicio en `js/config.js` → `DATOS_PRUEBA`. Cuando un endpoint esté listo, se pone en `false` ese servicio.
 
-Usuarios de prueba (ficticios): `ligia.manzano`, `recepcion`, `contador`, `auditor`, todos con la contraseña `demo1234`. Tres intentos fallidos simulan el bloqueo.
+Los datos de prueba viven en memoria: lo que se guarda se pierde al recargar la página.
+
+Usuarios de prueba (ficticios): `ligia.manzano`, `recepcion`, `contador`, `auditor`, todos con la contraseña `demo1234`. Se entra con el **usuario**, no con un correo. Cinco intentos fallidos seguidos simulan el bloqueo; para volver a probar, basta con recargar la página.
 
 ## Estructura
 
 ```
 index.html                 Login (es la página de entrada en Vercel)
 inicio.html                Inicio; plantilla para las demás páginas internas
+clientes.html              Clientes: lista, ficha y formulario (nuevo / editar)
 css/input.css              Tema (tokens del diseño) y componentes → se compila a css/styles.css
 js/config.js               URL de la API, interruptores de datos de prueba, tiempos
 js/controllersWeb/         Un controlador por página: DOM y eventos
@@ -30,6 +33,7 @@ js/utils/authFetch.js      fetch con token, URL base y manejo de errores (lo usa
 js/utils/session.js        Sesión en sessionStorage y cierre por inactividad (30 min)
 js/utils/layout.js         Menú lateral y barra superior de las páginas internas
 js/utils/icons.js          Iconos Lucide
+js/utils/formato.js        Dinero, fechas, iniciales y escapar texto
 docs/contrato-api.md       Acuerdo de endpoints y JSON con el backend
 ```
 

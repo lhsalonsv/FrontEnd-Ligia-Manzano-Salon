@@ -28,6 +28,8 @@ let fallosPrueba = 0;
 
 async function iniciarSesionPrueba(nombreUsuario, contrasena) {
   await new Promise((r) => setTimeout(r, 400)); // simula la red
+  // Bloqueada: sigue así hasta recargar la página (el backend real la libera a los 15 minutos)
+  if (fallosPrueba >= INTENTOS_MAXIMOS) throw new ApiError(423, 'La cuenta se bloqueó por 15 minutos.', { minutosBloqueo: 15 });
   const encontrado = USUARIOS_PRUEBA.find(
     (u) => u.nombreUsuario === nombreUsuario.trim().toLowerCase() && u.contrasena === contrasena,
   );
@@ -35,7 +37,6 @@ async function iniciarSesionPrueba(nombreUsuario, contrasena) {
     fallosPrueba += 1;
     const intentosRestantes = Math.max(INTENTOS_MAXIMOS - fallosPrueba, 0);
     if (intentosRestantes === 0) {
-      fallosPrueba = 0;
       throw new ApiError(423, 'La cuenta se bloqueó por 15 minutos.', { minutosBloqueo: 15 });
     }
     throw new ApiError(401, 'Usuario o contraseña incorrectos', { intentosRestantes });
