@@ -26,14 +26,14 @@ export const EMPLEADOS_PRUEBA = [
     usuario: { nombreUsuario: 'ligia.manzano', rol: 'ADMINISTRADOR' }, especialidades: [], horarios: [],
   },
   {
-    ...base, idEmpleado: 1, nombreEmpleado: 'Karla', apellido: 'Méndez', dui: '00000000-4', telefono: '7000-0126',
-    correoEmpleado: 'karla.prueba@ejemplo.com', puesto: 'Estilista', fechaIngreso: '2023-03-06', sueldoBaseMensual: 408.8,
+    ...base, idEmpleado: 1, nombreEmpleado: 'Julio', apellido: 'Palacios', dui: '00000000-4', telefono: '7000-0126',
+    correoEmpleado: 'juliopalacioszep@gmail.com', puesto: 'Estilista', fechaIngreso: '2023-03-06', sueldoBaseMensual: 408.8,
     afpAdministradora: 'CRECER', nupAfp: '000000004521', numeroIsss: '000000318', comisionesQuincena: 178,
     especialidades: [1, 2, 3], horarios: semana([1, 2, 3, 4, 5], [['08:00', '12:00'], ['13:00', '17:00']]),
   },
   {
-    ...base, idEmpleado: 2, nombreEmpleado: 'Sofía', apellido: 'Rivas', dui: '00000000-1', telefono: '7000-0133',
-    puesto: 'Estilista', fechaIngreso: '2024-01-15', sueldoBaseMensual: 408.8,
+    ...base, idEmpleado: 2, nombreEmpleado: 'Katherine', apellido: 'Ruiz', dui: '00000000-1', telefono: '7000-0133',
+    correoEmpleado: 'katruiz2007@gmail.com',puesto: 'Estilista', fechaIngreso: '2024-01-15', sueldoBaseMensual: 408.8,
     afpAdministradora: 'CONFIA', nupAfp: '000000007788', numeroIsss: '000000502', comisionesQuincena: 140.5,
     especialidades: [1, 3], horarios: semana([2, 3, 4, 5, 6], [['09:00', '18:00']]),
   },
