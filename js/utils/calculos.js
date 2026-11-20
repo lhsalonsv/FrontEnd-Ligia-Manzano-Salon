@@ -14,3 +14,16 @@ export const sinIva = (precioConIva, ivaPct) => centavos(precioConIva / (1 + iva
 /** Comisión de un servicio: % sobre el precio sin IVA (tb_comisiones.base_sin_iva × porcentaje). */
 export const comisionServicio = (precioConIva, ivaPct, comisionPct) =>
   centavos(sinIva(precioConIva, ivaPct) * comisionPct / 100);
+
+/**
+ * Totales de una compra (tb_compras / tb_detalle_compras). Costos sin IVA; cada línea se redondea
+ * a centavos y el IVA (crédito fiscal) se saca del subtotal. Solo el CCF lleva IVA aparte: en una
+ * factura de consumidor final el IVA ya viene dentro del costo y no se acredita.
+ * @param {{cantidad:number, costoUnitario:number}[]} lineas
+ */
+export function totalesCompra(lineas, ivaPct, tipoDocumento = 'CCF') {
+  const subtotales = lineas.map((l) => centavos(l.cantidad * l.costoUnitario));
+  const subtotalSinIva = centavos(subtotales.reduce((a, b) => a + b, 0));
+  const iva = tipoDocumento === 'CCF' ? centavos(subtotalSinIva * ivaPct / 100) : 0;
+  return { subtotales, subtotalSinIva, iva, total: centavos(subtotalSinIva + iva) };
+}

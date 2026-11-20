@@ -5,7 +5,7 @@
  */
 import { montarLayout } from '../utils/layout.js';
 import { icono } from '../utils/icons.js';
-import { escapar, dinero, numero, fechaCorta, MESES } from '../utils/formato.js';
+import { escapar, dinero, numero, fechaCorta, fechaLarga } from '../utils/formato.js';
 import { sinIva } from '../utils/calculos.js';
 import { salidaPeps } from '../utils/peps.js';
 import { campo, entrada, mostrarErrores } from '../utils/formulario.js';
@@ -55,13 +55,6 @@ function insignia({ existencia, stockMinimo, activo }) {
   if (existencia === 0) return '<span class="insignia insignia-error">Agotado</span>';
   if (existencia < stockMinimo) return '<span class="insignia insignia-aviso">Bajo el mínimo</span>';
   return '';
-}
-
-/** '18 de septiembre' (con el año si no es este). */
-function fechaLarga(valor) {
-  const f = new Date(valor);
-  const texto = `${f.getDate()} de ${MESES[f.getMonth()]}`;
-  return f.getFullYear() === new Date().getFullYear() ? texto : `${texto} de ${f.getFullYear()}`;
 }
 
 const TIPO_MOVIMIENTO = {
@@ -208,7 +201,9 @@ async function mostrarDetalle(idProducto, aviso = '') {
       ${htmlMovimientos(p.ultimosMovimientos)}
     </div>
     <div class="mt-auto flex flex-col gap-3 border-t border-borde-default px-6 pt-4 pb-6 max-xl:mt-6">
-      <button type="button" class="btn btn-primario" disabled title="Disponible cuando se programe Compras">Registrar compra</button>
+      ${p.activo
+        ? `<a class="btn btn-primario" href="compras.html?registrar&idProducto=${p.idProducto}">Registrar compra</a>`
+        : '<button type="button" class="btn btn-primario" disabled title="Actívalo para comprarlo">Registrar compra</button>'}
       <div class="grid grid-cols-2 gap-3">
         <button type="button" class="btn btn-secundario" data-accion="ajustar">Ajustar existencia</button>
         <button type="button" class="btn btn-secundario" data-accion="editar">Editar producto</button>
@@ -590,4 +585,7 @@ if (sesion) {
   // Si fallan las opciones, la lista igual carga; el formulario pide elegir marca y categoría y no deja guardar.
   cargarOpciones().catch(() => {});
   cargarLista();
+  // Desde Compras: inventario.html?idProducto=1 abre ese producto
+  const idInicial = new URLSearchParams(location.search).get('idProducto');
+  if (idInicial) mostrarDetalle(idInicial);
 }

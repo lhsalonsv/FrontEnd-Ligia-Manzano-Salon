@@ -63,7 +63,7 @@ export async function crearMarca(nombreMarca) {
 
 // --- Datos de prueba ---------------------------------------------------------
 const esperar = () => new Promise((r) => setTimeout(r, 250));
-const productos = structuredClone(PRODUCTOS_PRUEBA);
+const productos = PRODUCTOS_PRUEBA; // sin copiar: comprasService le agrega lotes al registrar una compra
 const marcas = structuredClone(MARCAS_PRUEBA);
 const sinAcentos = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const categoria = (id) => CATEGORIAS_PRUEBA.find((c) => c.idCategoria === id)?.nombreCategoria ?? '';

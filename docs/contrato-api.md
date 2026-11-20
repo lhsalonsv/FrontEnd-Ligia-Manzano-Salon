@@ -398,6 +398,137 @@ Todas las columnas de `tb_productos` en camelCase, más lo calculado para el det
 - `GET /api/marcas` → `[{ "idMarca": 1, "nombreMarca": "Aurora Pro" }]`, por nombre.
 - `POST /api/marcas` `{ "nombreMarca": "Aurora Pro" }` → 201 `{ "idMarca": 5, "nombreMarca": "Aurora Pro" }`. Se agrega desde el formulario de producto. 409 con `campos.nombreMarca` si ya existe (sin importar mayúsculas ni tildes).
 
+## Proveedores (`tb_proveedores`)
+
+### `GET /api/proveedores`
+
+Todos (activos e inactivos), por `nombre_comercial`. Son pocos: el frontend busca y filtra sin volver a pedir.
+
+```json
+[
+  { "idProveedor": 1, "nombreComercial": "Distribuidora Aurora", "razonSocial": "Aurora Distribuciones, S.A. de C.V.",
+    "nit": "00000000000011", "nrc": "0000011", "contactoNombre": "Andrea López", "telefono": "7000-0031",
+    "diasCredito": 30, "activo": true,
+    "ultimaCompra": { "fechaCompra": "2026-11-20", "total": 318.40 } }
+]
+```
+
+- `nit` y `nrc` van sin guiones (el frontend los muestra con guiones). `ultimaCompra` es `null` si nunca se le compró; no cuenta las anuladas.
+
+### `GET /api/proveedores/{id}`
+
+Todas las columnas en camelCase, más:
+
+```json
+{
+  "ultimasCompras": [
+    { "idCompra": 160, "numeroCompra": "C-0160", "fechaCompra": "2026-11-20", "productos": 5, "total": 318.40, "fechaVencimientoPago": "2026-12-20" }
+  ],
+  "comprasAnio": { "cantidad": 9, "total": 1684.20 }
+}
+```
+
+- `ultimasCompras`: las 3 más recientes, sin anuladas. `comprasAnio`: las de este año.
+
+### `POST /api/proveedores` y `PUT /api/proveedores/{id}`
+
+```json
+{ "nombreComercial": "Belleza Pro Distribuidora", "razonSocial": "Belleza Profesional, S.A. de C.V.", "nit": "00000000000051",
+  "nrc": "0000051", "contactoNombre": null, "telefono": null, "correo": null, "direccion": null, "diasCredito": 30, "notas": null }
+```
+
+| Campo | Regla |
+|---|---|
+| `nombreComercial` | obligatorio, hasta 150 |
+| `razonSocial` | obligatoria, hasta 250 |
+| `nit` | obligatorio: 14 dígitos (o 9 si es un DUI homologado); **único** |
+| `nrc` | obligatorio: 2 a 8 dígitos; **único**. Sin NRC no se acredita el IVA de las compras |
+| `contactoNombre` (100), `telefono` (30), `correo` (100, formato de correo), `direccion` (200), `notas` (300) | opcionales |
+| `diasCredito` | entero de 0 a 120; 0 = contado |
+
+- 201 / 200 con el mismo objeto de `GET /api/proveedores/{id}`. Un proveedor nuevo queda activo.
+- 409 `PROVEEDOR_DUPLICADO` si el NIT o el NRC ya son de otro: `campos.nit` o `campos.nrc`, e `idProveedorExistente`. El frontend ofrece ir a ese proveedor.
+- Va a la bitácora.
+
+### `PATCH /api/proveedores/{id}/activo`
+
+`{ "activo": false }` → 200 con la ficha. Un proveedor inactivo no sale al registrar compras; sus compras quedan. Los proveedores no se borran.
+
+## Compras (`tb_compras`, `tb_detalle_compras`, `tb_lotes`)
+
+Cada línea de una compra crea un lote (PEPS) y una entrada en el kardex (`ENTRADA_COMPRA`). Las compras no se editan: si algo llegó mal, se corrige con un ajuste en Inventario.
+
+### `GET /api/compras?buscar=&filtro=todas&idProveedor=&pagina=0&tamano=50`
+
+- `buscar` (opcional): `numero_compra` o nombre del proveedor (sin importar tildes ni mayúsculas).
+- `filtro`: `todas` · `este-mes` (`fecha_compra` en el mes actual). `idProveedor` opcional. Orden: la más nueva primero (`fecha_compra`, `id_compra`).
+
+```json
+{
+  "contenido": [
+    { "idCompra": 157, "numeroCompra": "C-0157", "fechaCompra": "2026-10-21", "idProveedor": 1, "nombreProveedor": "Distribuidora Aurora",
+      "tipoDocumentoProveedor": "CCF", "numeroDocumentoProveedor": "DTE-03-M001P001-000000000002291",
+      "productos": 3, "unidades": 30, "total": 248.83, "estado": "REGISTRADA" }
+  ],
+  "totalElementos": 24,
+  "conteos": { "todas": 24, "este-mes": 1 },
+  "mes": { "cantidad": 1, "total": 256.48 }
+}
+```
+
+- `conteos` respeta `buscar` e `idProveedor`. `mes`: las compras del mes actual, sin filtros (sin anuladas).
+
+### `GET /api/compras/{id}`
+
+```json
+{
+  "idCompra": 157, "numeroCompra": "C-0157", "idProveedor": 1, "nombreProveedor": "Distribuidora Aurora",
+  "fechaCompra": "2026-10-21", "tipoDocumentoProveedor": "CCF", "numeroDocumentoProveedor": "DTE-03-M001P001-000000000002291",
+  "subtotalSinIva": 220.20, "iva": 28.63, "total": 248.83, "fechaVencimientoPago": "2026-11-20", "estado": "REGISTRADA",
+  "nombreUsuario": "Ligia Manzano", "creadoEn": "2026-10-21T10:42:00-06:00",
+  "detalle": [
+    { "idProducto": 1, "nombreProducto": "Shampoo hidratante 400 ml", "cantidad": 12, "costoUnitario": 6.80, "subtotal": 81.60, "cantidadDisponible": 1 }
+  ]
+}
+```
+
+- `cantidadDisponible`: lo que queda del lote que creó esa línea ("quedan 1 de 12").
+
+### `POST /api/compras`
+
+```json
+{
+  "idProveedor": 1, "fechaCompra": "2026-12-12", "tipoDocumentoProveedor": "CCF", "numeroDocumentoProveedor": "DTE-03-M001P001-000000000003105",
+  "detalle": [
+    { "idProducto": 1, "cantidad": 12, "costoUnitario": 7.00 },
+    { "idProducto": 10, "cantidad": 6, "costoUnitario": 4.50 }
+  ]
+}
+```
+
+| Campo | Regla |
+|---|---|
+| `idProveedor` | obligatorio, activo |
+| `fechaCompra` | obligatoria, no en el futuro |
+| `tipoDocumentoProveedor` | `CCF` · `FACTURA` · `OTRO` |
+| `numeroDocumentoProveedor` | obligatorio con `CCF` y `FACTURA` (número de control o código de generación del DTE), hasta 40 |
+| `detalle` | al menos 1 línea; un producto no se repite; producto activo |
+| `cantidad` | entero de 1 a 9999 |
+| `costoUnitario` | sin IVA, ≥ 0, hasta 4 decimales (en una `FACTURA` u `OTRO`, el costo que se pagó) |
+
+Lo calcula la API (igual que `totalesCompra` en `js/utils/calculos.js`):
+
+- `subtotal` de cada línea = `cantidad × costoUnitario` a 2 decimales; `subtotalSinIva` = suma de las líneas.
+- `iva` = `subtotalSinIva × IVA_PCT` a 2 decimales, **solo con `CCF`** (crédito fiscal); con `FACTURA` u `OTRO` es 0.
+- `total` = `subtotalSinIva + iva`. `fechaVencimientoPago` = `fechaCompra + diasCredito` del proveedor (`null` si es de contado). `numeroCompra` = el siguiente (`C-0163`).
+- Cada línea → un `tb_lotes` con `fecha_ingreso = now()` (se vende después de los lotes que ya hay) y su `tb_movimientos_inventario` `ENTRADA_COMPRA`. Todo en una transacción, con la bitácora.
+
+Respuestas:
+
+- 201 con el mismo objeto de `GET /api/compras/{id}`.
+- 400 con `campos` (`idProveedor`, `fechaCompra`, `numeroDocumentoProveedor`, `detalle`). Un error de una línea: `campos.detalle` con el texto ("La línea 2: la cantidad tiene que ser mayor que 0.").
+- 409 `COMPRA_DUPLICADA` si ese proveedor ya tiene una compra registrada con ese `numeroDocumentoProveedor` (se registró dos veces el mismo documento): `campos.numeroDocumentoProveedor`, e `idCompraExistente`.
+
 ## Catálogos de Hacienda
 
 - `GET /api/catalogos/actividades` → `[{ "codActividad": "96020", "descripcion": "Peluquería y otros tratamientos de belleza" }]` (CAT-019 completo).
@@ -406,4 +537,4 @@ Todas las columnas de `tb_productos` en camelCase, más lo calculado para el det
 
 ## Siguientes endpoints
 
-Se agregan aquí a medida que se programan las pantallas (compras, agenda…). Para cada uno: método, ruta, cuerpo, respuesta y errores.
+Se agregan aquí a medida que se programan las pantallas (agenda, punto de venta…). Para cada uno: método, ruta, cuerpo, respuesta y errores.

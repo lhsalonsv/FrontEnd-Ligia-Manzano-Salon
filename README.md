@@ -21,6 +21,7 @@ Los datos de prueba viven en memoria: lo que se guarda se pierde al recargar la 
 Usuarios de prueba (ficticios): `ligia.manzano`, `recepcion`, `contador`, `auditor`, todos con la contraseña `demo1234`. Se entra con el **usuario**, no con un correo.
 
 - `nueva` / `temporal1234` tiene contraseña temporal: al entrar la manda a cambiarla. La contraseña cambiada sirve hasta cerrar la pestaña.
+- Compras e Inventario comparten los productos de prueba: una compra registrada sube la existencia en Inventario (hasta recargar).
 - Tras cinco intentos fallidos seguidos la cuenta queda bloqueada: el mensaje es el mismo que el de una contraseña mala (así lo hace la API, para no revelar qué usuarios existen), y ni la contraseña correcta entra. Para volver a probar, basta con recargar la página.
 
 ## Estructura
@@ -33,6 +34,7 @@ clientes.html              Clientes: lista, ficha y formulario (nuevo / editar)
 servicios.html             Servicios: catálogo por especialidad, detalle y formulario
 empleados.html             Empleados: equipo, ficha, formulario con especialidades y horario, dar de baja
 inventario.html            Inventario: productos, lotes PEPS, últimos movimientos, ajuste de existencia y formulario
+compras.html               Compras: historial, registrar compra (un lote por producto) y proveedores
 css/input.css              Tema (tokens del diseño) y componentes → se compila a css/styles.css
 js/config.js               URL de la API, interruptores de datos de prueba, tiempos
 js/controllersWeb/         Un controlador por página: DOM y eventos
@@ -43,7 +45,7 @@ js/utils/session.js        Sesión en sessionStorage y cierre por inactividad (3
 js/utils/layout.js         Menú lateral y barra superior de las páginas internas
 js/utils/icons.js          Iconos Lucide
 js/utils/formato.js        Dinero, fechas, duraciones, iniciales y escapar texto
-js/utils/calculos.js       Precio sin IVA y comisión (probado en tests/: npm test)
+js/utils/calculos.js       Precio sin IVA, comisión y totales de una compra (probado en tests/: npm test)
 js/utils/horario.js        Horario semanal de una empleada dentro del horario del salón (probado en tests/)
 js/utils/peps.js           Lotes PEPS: existencia, valor al costo y de qué lotes sale una salida (probado en tests/)
 js/utils/panel.js          Panel derecho de las pantallas de catálogo (ficha / formulario)

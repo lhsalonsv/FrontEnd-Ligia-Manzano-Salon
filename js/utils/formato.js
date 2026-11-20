@@ -28,6 +28,13 @@ function aFecha(valor) {
 
 const mismoDia = (a, b) => a.toDateString() === b.toDateString();
 
+/** Fecha local 'AAAA-MM-DD' (hoy si no se pasa nada), más `dias` días. toISOString daría la de UTC. */
+export function fechaIso(valor = new Date(), dias = 0) {
+  const f = new Date(aFecha(valor));
+  f.setDate(f.getDate() + dias);
+  return `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, '0')}-${String(f.getDate()).padStart(2, '0')}`;
+}
+
 /** 'Hoy', '12 dic' o '12 dic 2025' si es de otro año. */
 export function fechaCorta(valor) {
   if (!valor) return '—';
@@ -36,6 +43,13 @@ export function fechaCorta(valor) {
   if (mismoDia(f, hoy)) return 'Hoy';
   const texto = `${f.getDate()} ${MESES[f.getMonth()].slice(0, 3)}`;
   return f.getFullYear() === hoy.getFullYear() ? texto : `${texto} ${f.getFullYear()}`;
+}
+
+/** '18 de septiembre' (con el año si no es este). */
+export function fechaLarga(valor) {
+  const f = aFecha(valor);
+  const texto = `${f.getDate()} de ${MESES[f.getMonth()]}`;
+  return f.getFullYear() === new Date().getFullYear() ? texto : `${texto} de ${f.getFullYear()}`;
 }
 
 /** 'Hoy 2:00' o '19 dic' (para citas: la hora solo importa si es hoy). */

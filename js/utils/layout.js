@@ -28,7 +28,7 @@ const MENU = [
   [
     { id: 'servicios', texto: 'Servicios', href: 'servicios.html', listo: true },
     { id: 'inventario', texto: 'Inventario', href: 'inventario.html', listo: true },
-    { id: 'compras', texto: 'Compras', href: 'compras.html', listo: false },
+    { id: 'compras', texto: 'Compras', href: 'compras.html', listo: true },
   ],
   [
     { id: 'empleados', texto: 'Empleados', href: 'empleados.html', listo: true },

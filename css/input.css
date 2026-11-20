@@ -142,7 +142,18 @@
   .fila-e { @apply grid grid-cols-[minmax(0,1fr)_72px] items-center gap-3 px-4 sm:grid-cols-[minmax(0,1fr)_112px_72px] md:grid-cols-[minmax(0,1fr)_120px_112px_112px_72px]; }
 
   /* Lista de productos: en celular producto y existencia; precio desde sm; costo y valor desde md */
-  .fila-p { @apply grid grid-cols-[minmax(0,1fr)_120px] items-center gap-3 px-4 sm:grid-cols-[minmax(0,1fr)_120px_80px] md:grid-cols-[minmax(0,1fr)_128px_88px_80px_88px]; }
+  /* Compras: n.º/fecha | proveedor | productos | total. Proveedores: nombre | contacto | crédito | última compra */
+  .fila-co { @apply grid grid-cols-[64px_minmax(0,1fr)_84px] items-center gap-3 px-4 md:grid-cols-[88px_minmax(0,1fr)_112px_104px]; }
+  .fila-pr { @apply grid grid-cols-[minmax(0,1fr)_96px] items-center gap-3 px-4 sm:grid-cols-[minmax(0,1fr)_88px_104px] md:grid-cols-[minmax(0,1fr)_180px_88px_112px]; }
+  /* Línea de una compra: en celular, el producto arriba y cantidad | costo | subtotal abajo */
+  .fila-linea { @apply grid grid-cols-[80px_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 border-b border-neutro-100 py-3 md:grid-cols-[minmax(0,1fr)_88px_136px_96px_32px]; }
+
+  /* Selector de vista (Compras | Proveedores) */
+  .segmento { @apply inline-flex gap-1 rounded-medio bg-neutro-200 p-1; }
+  .segmento button { @apply cursor-pointer rounded-chico px-3 py-1.5 text-sm font-semibold text-texto-secundario hover:text-texto-principal; }
+  .segmento button[aria-pressed="true"] { @apply bg-fondo-superficie text-texto-principal shadow-sm; }
+
+  .fila-p {@apply grid grid-cols-[minmax(0,1fr)_120px] items-center gap-3 px-4 sm:grid-cols-[minmax(0,1fr)_120px_80px] md:grid-cols-[minmax(0,1fr)_128px_88px_80px_88px]; }
 
   /* Opción tipo botón (radio o checkbox escondido dentro de un label) */
   .chip { @apply inline-flex h-9 cursor-pointer items-center rounded-chico border border-borde-fuerte bg-fondo-superficie px-3 text-sm font-semibold has-checked:border-neutro-900 has-checked:bg-neutro-900 has-checked:text-texto-sobre-oscuro has-focus-visible:outline-2 has-focus-visible:outline-accion-foco; }

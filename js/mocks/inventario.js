@@ -47,12 +47,11 @@ const FILAS = [
 ];
 
 let idLote = 100;
-let numeroCompra = 120;
 
-/** Un lote comprado hace 40 días y sus ventas repartidas en el último mes. */
+/** Un lote comprado hace 40 días (una compra por marca: C-0151 a C-0154) y sus ventas repartidas en el último mes. */
 function productoSimple([nombre, idCategoria, idMarca, precio, costo, existencia, minimo, vendidos], i) {
   const inicial = existencia + vendidos;
-  const lote = { idLote: ++idLote, fechaIngreso: hace(40), costoUnitario: costo, cantidadInicial: inicial, cantidadDisponible: existencia, numeroCompra: `C-0${++numeroCompra}` };
+  const lote = { idLote: ++idLote, fechaIngreso: hace(40), costoUnitario: costo, cantidadInicial: inicial, cantidadDisponible: existencia, numeroCompra: `C-015${idMarca}` };
   const ventas = Array.from({ length: vendidos }, (_, n) => ({
     fechaHora: hace(Math.round((n * 30) / vendidos)), tipo: 'SALIDA_VENTA', cantidad: -1, referencia: null, motivo: null,
   }));
