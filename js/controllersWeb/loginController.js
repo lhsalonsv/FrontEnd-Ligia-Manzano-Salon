@@ -5,6 +5,7 @@
 import { iniciarSesion } from '../services/authService.js';
 import { guardarSesion, obtenerSesion } from '../utils/session.js';
 import { icono } from '../utils/icons.js';
+import { escapar } from '../utils/formato.js';
 import { PAGINA_INICIO } from '../config.js';
 
 // 1. Si ya hay sesión, no tiene sentido mostrar el login
@@ -26,11 +27,12 @@ const cajaContrasena = inputContrasena.closest('.campo-caja');
 const MOTIVOS = {
   inactividad: { tipo: 'info', titulo: 'Se cerró la sesión', texto: 'Pasaron 30 minutos sin uso. Vuelve a entrar para continuar.' },
   expirada: { tipo: 'info', titulo: 'La sesión expiró', texto: 'Vuelve a entrar para continuar.' },
+  'contrasena-cambiada': { tipo: 'exito', titulo: 'Contraseña cambiada', texto: 'Entra con tu contraseña nueva.' },
 };
 
 function mostrarAviso(tipo, titulo, texto) {
   aviso.className = `aviso aviso-${tipo}`;
-  aviso.innerHTML = `${icono(tipo === 'error' ? 'alerta' : 'info')}<div><b class="block">${titulo}</b>${texto ?? ''}</div>`;
+  aviso.innerHTML = `${icono(tipo === 'error' ? 'alerta' : 'info')}<div><b class="block">${escapar(titulo)}</b>${escapar(texto ?? '')}</div>`;
 }
 
 function ocultarAviso() {
@@ -90,16 +92,10 @@ form.addEventListener('submit', async (e) => {
     ocupado(false);
     inputContrasena.value = '';
     if (error.estado === 401) {
-      const restantes = error.detalle?.intentosRestantes;
-      const texto = restantes != null
-        ? `Te ${restantes === 1 ? 'queda 1 intento' : `quedan ${restantes} intentos`}. Después, la cuenta se bloquea 15 minutos.`
-        : '';
-      mostrarAviso('error', 'Usuario o contraseña incorrectos', texto);
+      // La API responde igual a cualquier fallo (también cuenta bloqueada): se muestra su mensaje tal cual
+      mostrarAviso('error', 'No se pudo entrar', error.message);
       cajaContrasena.setAttribute('aria-invalid', 'true');
       inputContrasena.focus();
-    } else if (error.estado === 423) {
-      const minutos = error.detalle?.minutosBloqueo ?? 15;
-      mostrarAviso('error', 'Cuenta bloqueada', `Por seguridad, espera ${minutos} minutos o pide a la administradora que la desbloquee.`);
     } else {
       mostrarAviso('error', 'No se pudo iniciar sesión', error.message);
     }

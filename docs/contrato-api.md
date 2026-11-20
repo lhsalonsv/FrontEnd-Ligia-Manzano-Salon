@@ -5,11 +5,22 @@ Acuerdo entre Julio (frontend) y Katherine (backend, Spring Boot). Si algo cambi
 ## Reglas generales
 
 - Base: `/api` (local `http://localhost:8080/api`; producción, la URL de Render).
-- **JSON en camelCase**, que es lo que Jackson hace por defecto: `idCliente`, `nombreCliente`, `fechaHoraInicio`. Los nombres salen de las columnas de `modelo_completo.sql` pasadas a camelCase (`nombre_cliente` → `nombreCliente`).
+- **JSON en camelCase**, que es lo que Jackson hace por defecto: `idCliente`, `numDocumento`, `fechaHoraInicio`. Los nombres salen de las columnas de `modelo_completo.sql` pasadas a camelCase (`num_documento` → `numDocumento`).
 - Fechas: `"2026-12-15"`; fecha y hora: ISO 8601 con zona, `"2026-12-15T16:00:00-06:00"`.
 - Dinero: número con 2 decimales (`56.50`), nunca texto.
 - Autenticación: cabecera `Authorization: Bearer <token>` en todo, excepto el login.
 - CORS: el backend permite el dominio de Vercel y `http://localhost:5500` / `http://127.0.0.1:5500` (Live Server).
+- El usuario que hace la acción sale del token; ninguna petición manda `idUsuario`.
+- Los cálculos de dinero (comisiones, IVA, totales) los hace el backend. El frontend puede mostrarlos antes de guardar, pero vale el de la API.
+
+### Paginación
+
+Todos los listados largos (clientes, productos, ventas, bitácora…) usan la misma forma:
+
+- Petición: `?pagina=0&tamano=50`. `pagina` empieza en 0.
+- `tamano` máximo **100**: si se pide más, la API devuelve 100.
+- Respuesta: `{ "contenido": [ … ], "totalElementos": 1248 }`, más `conteos` solo donde la pantalla tiene pestañas con números.
+- Una página fuera de rango responde **200** con `contenido` vacío (no 404).
 
 ## Errores
 
@@ -25,11 +36,10 @@ Toda respuesta de error usa la misma forma, para que el frontend muestre el mens
 | Estado | Cuándo |
 |---|---|
 | 400 | Datos inválidos (con `campos`) |
-| 401 | Sin sesión o token vencido → el frontend vuelve al login |
-| 403 | Con sesión, pero su rol no tiene permiso |
+| 401 | Sin sesión, token vencido o sesión cerrada (`codigo: "NO_AUTENTICADO"`) → el frontend vuelve al login |
+| 403 | Con sesión, pero su rol no tiene permiso. Con `codigo: "CAMBIO_CONTRASENA_REQUERIDO"`: la contraseña es temporal → el frontend manda a cambiarla |
 | 404 | No existe |
 | 409 | Conflicto (duplicado, horario ocupado, stock insuficiente) |
-| 423 | Cuenta bloqueada |
 
 ## Autenticación
 
@@ -46,14 +56,37 @@ Petición:
 ```json
 {
   "token": "eyJhbGciOi…",
-  "usuario": { "idUsuario": 1, "nombreUsuario": "ligia.manzano", "nombreCompleto": "Ligia Manzano", "rol": "ADMINISTRADOR" }
+  "usuario": { "idUsuario": 1, "nombreUsuario": "ligia.manzano", "nombreCompleto": "Ligia Manzano", "rol": "ADMINISTRADOR", "debeCambiarContrasena": false }
 }
 ```
 
 - `rol`: `ADMINISTRADOR`, `RECEPCIONISTA`, `CONTADOR` o `AUDITOR` (los 4 roles fijos).
-- 401: `{ "mensaje": "Usuario o contraseña incorrectos", "intentosRestantes": 4 }`
-- 423: `{ "mensaje": "La cuenta se bloqueó por 15 minutos.", "minutosBloqueo": 15 }`. Se bloquea al quinto intento fallido seguido (`tb_usuarios.intentos_fallidos`, `bloqueado_hasta`); un inicio de sesión correcto pone `intentos_fallidos` en 0.
-- El token dura lo mismo que la inactividad permitida (30 minutos) o más; el frontend cierra la sesión a los 30 minutos sin uso.
+- `debeCambiarContrasena`: `true` mientras la contraseña sea temporal (la puso la administradora). El frontend va directo a cambiarla.
+- 401, **igual para cualquier fallo** (usuario que no existe, contraseña mala, cuenta bloqueada o desactivada), para no revelar qué usuarios existen:
+  `{ "mensaje": "Usuario o contraseña incorrectos. Después de 5 intentos seguidos la cuenta se bloquea 15 minutos.", "codigo": "CREDENCIALES_INVALIDAS" }`
+- Se bloquea al quinto intento fallido seguido (`tb_usuarios.intentos_fallidos`, `bloqueado_hasta`); un inicio de sesión correcto pone `intentos_fallidos` en 0.
+- Cada inicio de sesión crea una fila en `tb_sesiones` y el token lleva su id. Cerrar sesión, cambiar la contraseña o desactivar al usuario revoca la sesión: el token deja de servir en la siguiente petición (401).
+- La API también cierra la sesión a los 30 minutos sin uso, igual que el frontend.
+
+### `POST /api/auth/logout`
+
+Con el token. Sin cuerpo. 204. El frontend lo llama al tocar "Salir" y después borra la sesión local, aunque la llamada falle.
+
+### `GET /api/auth/me`
+
+Con el token. 200 con el mismo objeto `usuario` del login. Sirve para refrescar los datos del usuario (por ahora el frontend no lo usa).
+
+### `POST /api/auth/cambiar-contrasena`
+
+Con el token. Se permite aunque la contraseña sea temporal.
+
+```json
+{ "contrasenaActual": "••••••••", "contrasenaNueva": "••••••••••••" }
+```
+
+- 204: contraseña cambiada. La API pone `debe_cambiar_contrasena` en `false` y **revoca todas las sesiones del usuario, incluida la actual**. El frontend vuelve al login para entrar con la nueva.
+- 400 con `campos`: `contrasenaActual` ("La contraseña actual no es correcta.") o `contrasenaNueva` (muy corta, igual a la actual o que contiene el usuario).
+- Largo mínimo: **12 caracteres** (propuesta; falta que el salón lo confirme). Se aceptan espacios, para poder usar frases.
 
 ## Clientes (`tb_clientes`)
 
@@ -62,6 +95,7 @@ Petición:
 - `buscar` (opcional): busca en nombre + apellido (sin importar tildes ni mayúsculas), teléfono y DUI. Desde 3 dígitos busca también en teléfono y DUI.
 - `filtro`: `todos` · `este-mes` (última visita en el mes actual) · `sin-venir-60` (última visita hace más de 60 días) · `cumple-mes` (`mes_cumple` = mes actual).
 - Solo clientes con `activo = true`. Orden: última visita más reciente primero.
+- Paginación como en Reglas generales: `contenido`, `totalElementos` y `conteos`.
 
 200:
 
@@ -158,7 +192,7 @@ El servicio, más:
 {
   "vecesEsteMes": 9,
   "tieneVentas": true,
-  "quienes": [ { "idEmpleado": 1, "nombreCompleto": "Karla Méndez", "cargo": "Estilista", "vecesEsteMes": 5 } ]
+  "quienes": [ { "idEmpleado": 1, "nombreCompleto": "Karla Méndez", "puesto": "Estilista", "vecesEsteMes": 5 } ]
 }
 ```
 
@@ -193,7 +227,7 @@ Respuesta: 201 / 200 con el servicio como en el GET por id. Cambiar el precio no
 
 ```json
 [ { "idEspecialidad": 3, "nombreEspecialidad": "Tratamientos",
-    "empleados": [ { "idEmpleado": 1, "nombreCompleto": "Karla Méndez", "cargo": "Estilista" } ] } ]
+    "empleados": [ { "idEmpleado": 1, "nombreCompleto": "Karla Méndez", "puesto": "Estilista" } ] } ]
 ```
 
 Solo empleados activos. La usan Servicios (y después Agenda y Empleados).
@@ -269,4 +303,4 @@ Todas las columnas de `tb_empleados` en camelCase, más:
 
 ## Siguientes endpoints
 
-Se agregan aquí a medida que se programan las pantallas (servicios, agenda…). Para cada uno: método, ruta, cuerpo, respuesta y errores.
+Se agregan aquí a medida que se programan las pantallas (inventario, agenda…). Para cada uno: método, ruta, cuerpo, respuesta y errores.

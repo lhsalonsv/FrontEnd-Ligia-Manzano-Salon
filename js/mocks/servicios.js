@@ -6,21 +6,21 @@
 /** GET /api/especialidades: cada especialidad con los empleados activos que la tienen. */
 export const ESPECIALIDADES_PRUEBA = [
   { idEspecialidad: 1, nombreEspecialidad: 'Cabello', empleados: [
-    { idEmpleado: 1, nombreCompleto: 'Karla Méndez', cargo: 'Estilista' },
-    { idEmpleado: 2, nombreCompleto: 'Sofía Rivas', cargo: 'Estilista' },
-    { idEmpleado: 3, nombreCompleto: 'Daniela Cruz', cargo: 'Estilista' },
+    { idEmpleado: 1, nombreCompleto: 'Karla Méndez', puesto: 'Estilista' },
+    { idEmpleado: 2, nombreCompleto: 'Sofía Rivas', puesto: 'Estilista' },
+    { idEmpleado: 3, nombreCompleto: 'Daniela Cruz', puesto: 'Estilista' },
   ] },
   { idEspecialidad: 2, nombreEspecialidad: 'Color', empleados: [
-    { idEmpleado: 1, nombreCompleto: 'Karla Méndez', cargo: 'Estilista' },
-    { idEmpleado: 3, nombreCompleto: 'Daniela Cruz', cargo: 'Estilista' },
+    { idEmpleado: 1, nombreCompleto: 'Karla Méndez', puesto: 'Estilista' },
+    { idEmpleado: 3, nombreCompleto: 'Daniela Cruz', puesto: 'Estilista' },
   ] },
   { idEspecialidad: 3, nombreEspecialidad: 'Tratamientos', empleados: [
-    { idEmpleado: 1, nombreCompleto: 'Karla Méndez', cargo: 'Estilista' },
-    { idEmpleado: 2, nombreCompleto: 'Sofía Rivas', cargo: 'Estilista' },
-    { idEmpleado: 3, nombreCompleto: 'Daniela Cruz', cargo: 'Estilista' },
+    { idEmpleado: 1, nombreCompleto: 'Karla Méndez', puesto: 'Estilista' },
+    { idEmpleado: 2, nombreCompleto: 'Sofía Rivas', puesto: 'Estilista' },
+    { idEmpleado: 3, nombreCompleto: 'Daniela Cruz', puesto: 'Estilista' },
   ] },
   { idEspecialidad: 4, nombreEspecialidad: 'Uñas', empleados: [
-    { idEmpleado: 4, nombreCompleto: 'Marta Hernández', cargo: 'Manicurista' },
+    { idEmpleado: 4, nombreCompleto: 'Marta Hernández', puesto: 'Manicurista' },
   ] },
 ];
 

@@ -167,7 +167,7 @@ async function mostrarDetalle(idServicio, aviso = '') {
       ${s.quienes.length ? `<ul>${s.quienes.map((e) => `
         <li class="flex items-center gap-3 border-b border-neutro-100 py-2 last:border-0">
           <span class="ini" aria-hidden="true">${escapar(iniciales(e.nombreCompleto))}</span>
-          <span class="min-w-0 flex-1"><b class="block font-semibold">${escapar(e.nombreCompleto)}</b><small class="text-13 text-texto-secundario">${escapar(e.cargo)}</small></span>
+          <span class="min-w-0 flex-1"><b class="block font-semibold">${escapar(e.nombreCompleto)}</b><small class="text-13 text-texto-secundario">${escapar(e.puesto)}</small></span>
           <span class="text-texto-secundario tabular-nums">${e.vecesEsteMes} este mes</span>
         </li>`).join('')}</ul>` : '<p class="text-texto-secundario">Nadie tiene esta especialidad. Agrégala a alguien en Empleados.</p>'}
     </div>

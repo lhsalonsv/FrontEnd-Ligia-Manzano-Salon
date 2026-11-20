@@ -5,7 +5,7 @@
  * Se usa sessionStorage: la sesión muere al cerrar la pestaña, que es lo esperado en una
  * computadora de caja compartida.
  */
-import { MINUTOS_INACTIVIDAD, PAGINA_LOGIN } from '../config.js';
+import { MINUTOS_INACTIVIDAD, PAGINA_LOGIN, PAGINA_CAMBIO_CONTRASENA } from '../config.js';
 
 const CLAVE = 'lms.sesion';
 
@@ -34,11 +34,24 @@ export function cerrarSesion(motivo) {
   window.location.replace(destino);
 }
 
-/** Para páginas internas: si no hay sesión, manda al login. Devuelve la sesión. */
+/** Cambia datos del usuario guardado (p. ej. { debeCambiarContrasena: true }). */
+export function actualizarUsuario(cambios) {
+  const sesion = obtenerSesion();
+  if (sesion) guardarSesion({ ...sesion, usuario: { ...sesion.usuario, ...cambios } });
+}
+
+/**
+ * Para páginas internas: si no hay sesión, manda al login. Devuelve la sesión.
+ * Con contraseña temporal solo se puede estar en la página de cambiarla.
+ */
 export function exigirSesion() {
   const sesion = obtenerSesion();
   if (!sesion?.token) {
     window.location.replace(PAGINA_LOGIN);
+    return null;
+  }
+  if (sesion.usuario?.debeCambiarContrasena && !window.location.pathname.endsWith(PAGINA_CAMBIO_CONTRASENA)) {
+    window.location.replace(PAGINA_CAMBIO_CONTRASENA);
     return null;
   }
   return sesion;

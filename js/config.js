@@ -31,3 +31,7 @@ export const MINUTOS_INACTIVIDAD = 30;
 /** Página a la que se entra después de iniciar sesión. */
 export const PAGINA_INICIO = 'inicio.html';
 export const PAGINA_LOGIN = 'index.html';
+export const PAGINA_CAMBIO_CONTRASENA = 'cambiar-contrasena.html';
+
+/** Largo mínimo de la contraseña nueva. Propuesta de 12 (falta que el salón lo confirme); el backend también lo revisa. */
+export const CONTRASENA_MINIMA = 12;

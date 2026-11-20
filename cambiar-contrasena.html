@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cambiar contraseña · Ligia Manzano Salón</title>
+  <link rel="icon" type="image/svg+xml" href="img/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<!-- Sin mockup propio: usa el mismo armado que el login (index.html). -->
+<body class="min-h-dvh lg:grid lg:grid-cols-[520px_1fr]">
+
+  <aside class="relative hidden flex-col items-center justify-center gap-6 bg-lateral-fondo p-12 text-neutro-400 lg:flex">
+    <img src="img/logo-negativo.svg" alt="Ligia Manzano Salón" class="h-auto w-60">
+    <p class="tracking-wide">Sistema administrativo</p>
+  </aside>
+
+  <main class="flex min-h-dvh flex-col items-center justify-center bg-fondo-superficie px-6 py-16">
+    <img src="img/isotipo-negativo.svg" alt="Ligia Manzano Salón" class="mb-8 w-16 rounded-medio bg-lateral-fondo p-2 lg:hidden">
+
+    <form id="form-cambio" method="post" class="flex w-full max-w-sm flex-col gap-6" novalidate>
+      <div>
+        <h1 class="text-2xl">Cambiar contraseña</h1>
+        <p id="intro" class="mt-1 text-texto-secundario"></p>
+      </div>
+
+      <div id="cambio-aviso" class="aviso hidden" role="alert"></div>
+
+      <div class="flex flex-col gap-4">
+        <div>
+          <label for="f-contrasenaActual" class="campo-etiqueta">Contraseña actual</label>
+          <div class="campo-caja min-h-12 text-base">
+            <input id="f-contrasenaActual" name="contrasenaActual" type="password" autocomplete="current-password" required>
+          </div>
+          <p class="campo-error hidden" id="error-contrasenaActual"></p>
+        </div>
+        <div>
+          <label for="f-contrasenaNueva" class="campo-etiqueta">Contraseña nueva</label>
+          <div class="campo-caja min-h-12 text-base">
+            <input id="f-contrasenaNueva" name="contrasenaNueva" type="password" autocomplete="new-password" required aria-describedby="ayuda-contrasenaNueva">
+          </div>
+          <p class="campo-ayuda" id="ayuda-contrasenaNueva"></p>
+          <p class="campo-error hidden" id="error-contrasenaNueva"></p>
+        </div>
+        <div>
+          <label for="f-confirmar" class="campo-etiqueta">Escríbela otra vez</label>
+          <div class="campo-caja min-h-12 text-base">
+            <input id="f-confirmar" name="confirmar" type="password" autocomplete="new-password" required>
+          </div>
+          <p class="campo-error hidden" id="error-confirmar"></p>
+        </div>
+        <label class="flex items-center gap-2 text-sm">
+          <input id="ver" type="checkbox" class="size-4 accent-neutro-900"> Mostrar contraseñas
+        </label>
+      </div>
+
+      <div class="flex flex-col gap-3">
+        <button type="submit" id="btn-guardar" class="btn btn-primario btn-grande w-full">Cambiar contraseña</button>
+        <a id="btn-volver" href="inicio.html" class="btn btn-secundario w-full">Volver al inicio</a>
+        <button type="button" id="btn-salir" class="btn btn-secundario hidden w-full">Salir</button>
+      </div>
+    </form>
+  </main>
+
+  <script type="module" src="js/controllersWeb/cambiarContrasenaController.js"></script>
+</body>
+</html>

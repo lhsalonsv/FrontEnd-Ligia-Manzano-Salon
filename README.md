@@ -10,18 +10,24 @@ Sistema administrativo del salón: HTML + Tailwind CSS 4 + JavaScript (módulos 
 
 Antes de publicar: `npm run build` (CSS minificado). En Vercel: Build Command `npm run build`, Output Directory `.`.
 
+`vercel.json` pone las cabeceras de seguridad (Content-Security-Policy y otras). Por eso no se usan scripts ni estilos en línea (`<script>…</script>`, `onclick="…"`, `style="…"`), y todo texto que viene de la API pasa por `escapar()` antes de un `innerHTML`. Cuando exista la URL real de Render, se cambia en `vercel.json` (`connect-src`) y en `js/config.js`. Si se agrega una librería (Chart.js, FullCalendar), se descarga al proyecto en vez de cargarla de un CDN.
+
 ## Datos de prueba
 
 Mientras el backend no existe, los servicios responden con datos de `js/mocks/`. Se controla por servicio en `js/config.js` → `DATOS_PRUEBA`. Cuando un endpoint esté listo, se pone en `false` ese servicio.
 
 Los datos de prueba viven en memoria: lo que se guarda se pierde al recargar la página.
 
-Usuarios de prueba (ficticios): `ligia.manzano`, `recepcion`, `contador`, `auditor`, todos con la contraseña `demo1234`. Se entra con el **usuario**, no con un correo. Cinco intentos fallidos seguidos simulan el bloqueo; para volver a probar, basta con recargar la página.
+Usuarios de prueba (ficticios): `ligia.manzano`, `recepcion`, `contador`, `auditor`, todos con la contraseña `demo1234`. Se entra con el **usuario**, no con un correo.
+
+- `nueva` / `temporal1234` tiene contraseña temporal: al entrar la manda a cambiarla. La contraseña cambiada sirve hasta cerrar la pestaña.
+- Tras cinco intentos fallidos seguidos la cuenta queda bloqueada: el mensaje es el mismo que el de una contraseña mala (así lo hace la API, para no revelar qué usuarios existen), y ni la contraseña correcta entra. Para volver a probar, basta con recargar la página.
 
 ## Estructura
 
 ```
 index.html                 Login (es la página de entrada en Vercel)
+cambiar-contrasena.html    Cambiar contraseña (obligado si es temporal; también desde el candado de la barra)
 inicio.html                Inicio; plantilla para las demás páginas internas
 clientes.html              Clientes: lista, ficha y formulario (nuevo / editar)
 servicios.html             Servicios: catálogo por especialidad, detalle y formulario
@@ -41,6 +47,7 @@ js/utils/horario.js        Horario semanal de una empleada dentro del horario de
 js/utils/panel.js          Panel derecho de las pantallas de catálogo (ficha / formulario)
 js/utils/formulario.js     Campo con etiqueta y error; mostrar errores del frontend y del backend
 docs/contrato-api.md       Acuerdo de endpoints y JSON con el backend
+vercel.json                Cabeceras de seguridad al publicar en Vercel
 ```
 
 ## Convenciones

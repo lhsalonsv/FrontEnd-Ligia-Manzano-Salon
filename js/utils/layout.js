@@ -10,7 +10,8 @@
  */
 import { icono } from './icons.js';
 import { escapar, iniciales } from './formato.js';
-import { exigirSesion, cerrarSesion, vigilarInactividad } from './session.js';
+import { exigirSesion, vigilarInactividad } from './session.js';
+import { salir } from '../services/authService.js';
 
 /**
  * Menú. `listo: false` = la pantalla todavía no está programada (se ve deshabilitada).
@@ -89,6 +90,7 @@ function htmlBarra(titulo, usuario, accion) {
           <span class="text-texto-secundario">${escapar(NOMBRE_ROL[usuario.rol] ?? usuario.rol)}</span>
         </div>
       </div>
+      <a href="cambiar-contrasena.html" class="btn btn-secundario h-9 px-2.5" aria-label="Cambiar contraseña" title="Cambiar contraseña">${icono('candado')}</a>
       <button type="button" id="btn-salir" class="btn btn-secundario h-9 px-3 text-sm" aria-label="Salir">${icono('salir')}<span class="hidden sm:inline">Salir</span></button>
     </div>`;
 }
@@ -122,7 +124,7 @@ export function montarLayout({ accion } = {}) {
   fondo?.addEventListener('click', () => abrir(false));
   document.addEventListener('keydown', (e) => e.key === 'Escape' && abrir(false));
 
-  document.getElementById('btn-salir').addEventListener('click', () => cerrarSesion());
+  document.getElementById('btn-salir').addEventListener('click', salir);
   vigilarInactividad();
   return sesion;
 }

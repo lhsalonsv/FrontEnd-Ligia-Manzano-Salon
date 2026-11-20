@@ -4,10 +4,11 @@
  *  - antepone API_BASE_URL a la ruta;
  *  - manda el token de Spring Security (Authorization: Bearer ...);
  *  - si el backend responde 401, cierra la sesión;
+ *  - si responde 403 CAMBIO_CONTRASENA_REQUERIDO, manda a cambiar la contraseña;
  *  - convierte los errores en ApiError con el mensaje que mande el backend.
  */
-import { API_BASE_URL } from '../config.js';
-import { obtenerToken, cerrarSesion } from './session.js';
+import { API_BASE_URL, PAGINA_CAMBIO_CONTRASENA } from '../config.js';
+import { obtenerToken, cerrarSesion, actualizarUsuario } from './session.js';
 
 export class ApiError extends Error {
   /** @param {number} estado  @param {string} mensaje  @param {object} [detalle] cuerpo de error del backend */
@@ -54,6 +55,12 @@ export async function authFetch(ruta, { cuerpo, conSesion = true, headers, ...op
     datos = texto ? JSON.parse(texto) : null;
   } catch {
     datos = { mensaje: respuesta.ok ? undefined : `Error ${respuesta.status}`, texto };
+  }
+
+  // Contraseña temporal: la API no deja hacer nada más hasta cambiarla
+  if (respuesta.status === 403 && datos?.codigo === 'CAMBIO_CONTRASENA_REQUERIDO') {
+    actualizarUsuario({ debeCambiarContrasena: true });
+    window.location.replace(PAGINA_CAMBIO_CONTRASENA);
   }
 
   if (!respuesta.ok) {
