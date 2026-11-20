@@ -1,0 +1,14 @@
+{
+  "name": "frontend-ligia-manzano-salon",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Frontend del sistema administrativo de Ligia Manzano Salón (HTML + Tailwind CSS + JavaScript).",
+  "scripts": {
+    "dev": "tailwindcss -i ./css/input.css -o ./css/styles.css --watch",
+    "build": "tailwindcss -i ./css/input.css -o ./css/styles.css --minify"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.3.5",
+    "tailwindcss": "^4.3.5"
+  }
+}

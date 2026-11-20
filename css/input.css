@@ -1,0 +1,122 @@
+/* Estilos de Ligia Manzano Salón.
+   Se compila con: npm run build   (o npm run dev mientras se programa).
+   El resultado es css/styles.css, que es el único CSS que cargan las páginas. */
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Tema: los mismos tokens del diseño (diseno/tokens.css y Figma).
+   Cada --color-* crea utilidades: bg-neutro-100, text-texto-secundario, border-borde-fuerte...
+   En las pantallas se usan los ROLES (fondo-*, texto-*, borde-*, accion-*, estado-*),
+   no los primitivos, igual que en el diseño.
+   --------------------------------------------------------------------------- */
+@theme {
+  --font-sans: "Source Sans 3", system-ui, sans-serif;
+  --font-mono: "Source Code Pro", ui-monospace, monospace;
+
+  /* Marca: colores exactos del logo */
+  --color-marca-rojo: #C72026;
+  --color-marca-carbon: #2A2E2E;
+  --color-marca-negro: #231F20;
+
+  /* Primitivos */
+  --color-rojo-50: #FFF4F2;  --color-rojo-100: #FFE6E3; --color-rojo-200: #FFCBC5; --color-rojo-300: #FEA197; --color-rojo-400: #F46F66;
+  --color-rojo-500: #DA433F; --color-rojo-600: #C72026; --color-rojo-700: #A10B17; --color-rojo-800: #7C010D; --color-rojo-900: #580006;
+  --color-neutro-50: #FEF8FA;  --color-neutro-100: #F7F2F3; --color-neutro-200: #E8E3E4; --color-neutro-300: #D5CFD1; --color-neutro-400: #A8A3A4;
+  --color-neutro-500: #7E797A; --color-neutro-600: #5E595A; --color-neutro-700: #454142; --color-neutro-800: #312D2E; --color-neutro-900: #211D1E;
+  --color-exito-50: #E4FFEC; --color-exito-600: #207D4B; --color-exito-700: #0E6639;
+  --color-aviso-50: #FFF5EA; --color-aviso-300: #E3B47D; --color-aviso-700: #774A00;
+  --color-info-50: #F1F8FE; --color-info-600: #32709E; --color-info-700: #225A83;
+
+  /* Roles (colección Tema de Figma) */
+  --color-fondo-app: var(--color-neutro-100);
+  --color-fondo-superficie: #FFFFFF;
+  --color-fondo-sutil: var(--color-neutro-50);
+  --color-borde-default: var(--color-neutro-200);
+  --color-borde-fuerte: var(--color-neutro-300);
+  --color-texto-principal: var(--color-neutro-900);
+  --color-texto-secundario: var(--color-neutro-600);
+  --color-texto-deshabilitado: var(--color-neutro-400);
+  --color-texto-sobre-oscuro: #FFFFFF;
+  --color-accion-primaria: var(--color-neutro-900);
+  --color-accion-primaria-hover: var(--color-neutro-700);
+  --color-accion-acento: var(--color-rojo-600);
+  --color-accion-acento-hover: var(--color-rojo-700);
+  --color-accion-foco: var(--color-info-600);
+  --color-lateral-fondo: var(--color-marca-negro);
+  --color-lateral-texto: var(--color-neutro-300);
+  --color-lateral-activo: var(--color-rojo-400); /* sobre el lateral oscuro, rojo-600 no llega a 3:1 */
+  --color-estado-error: var(--color-rojo-700);  --color-estado-error-fondo: var(--color-rojo-50);
+  --color-estado-exito: var(--color-exito-700); --color-estado-exito-fondo: var(--color-exito-50);
+  --color-estado-aviso: var(--color-aviso-700); --color-estado-aviso-fondo: var(--color-aviso-50);
+  --color-estado-info: var(--color-info-700);   --color-estado-info-fondo: var(--color-info-50);
+
+  /* Tamaños de texto del diseño que Tailwind no trae (13 y 15 px) */
+  --text-13: 0.8125rem;
+  --text-15: 0.9375rem;
+
+  /* Radios del diseño: rounded-chico (6), rounded-medio (10), rounded-grande (14) */
+  --radius-chico: 6px;
+  --radius-medio: 10px;
+  --radius-grande: 14px;
+}
+
+/* ---------------------------------------------------------------------------
+   Base
+   --------------------------------------------------------------------------- */
+@layer base {
+  html { -webkit-font-smoothing: antialiased; }
+  body { @apply bg-fondo-app font-sans text-base leading-normal text-texto-principal; }
+  h1, h2, h3 { @apply font-semibold text-balance; }
+  /* Foco visible en todo lo interactivo (accesibilidad) */
+  :focus-visible { outline: 2px solid var(--color-accion-foco); outline-offset: 2px; }
+}
+
+/* ---------------------------------------------------------------------------
+   Componentes que se repiten en todas las pantallas.
+   Usar estas clases en vez de copiar la misma lista de utilidades en cada HTML.
+   --------------------------------------------------------------------------- */
+@layer components {
+  /* Iconos Lucide en línea (ver js/utils/icons.js) */
+  .icono { @apply size-5 shrink-0 fill-none stroke-current; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* Botones */
+  .btn {
+    @apply inline-flex h-10 items-center justify-center gap-2 whitespace-nowrap rounded-chico border border-transparent px-4 text-15 font-semibold;
+    @apply cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .btn .icono { @apply size-[18px]; }
+  .btn-primario { @apply bg-accion-primaria text-texto-sobre-oscuro hover:bg-accion-primaria-hover; }
+  .btn-acento { @apply bg-accion-acento text-texto-sobre-oscuro hover:bg-accion-acento-hover; }
+  .btn-secundario { @apply border-borde-fuerte bg-fondo-superficie text-texto-principal hover:bg-fondo-sutil; }
+  .btn-peligro { @apply bg-estado-error text-texto-sobre-oscuro; }
+  .btn-grande { @apply h-12 text-base; }
+
+  /* Campos de formulario */
+  .campo-etiqueta { @apply mb-1.5 block text-sm font-semibold; }
+  .campo-caja {
+    @apply flex min-h-11 items-center gap-2 rounded-chico border border-borde-fuerte bg-fondo-superficie px-3 text-15;
+    @apply focus-within:border-neutro-900 focus-within:ring-1 focus-within:ring-neutro-900;
+  }
+  .campo-caja .icono { @apply size-[18px] text-texto-secundario; }
+  .campo-caja input { @apply min-w-0 flex-1 bg-transparent py-2 outline-none placeholder:text-texto-deshabilitado; }
+  .campo-caja[aria-invalid="true"] { @apply border-estado-error ring-1 ring-estado-error; }
+  .campo-ayuda { @apply mt-1 text-13 text-texto-secundario; }
+
+  /* Menú lateral */
+  .nav-grupo { @apply flex flex-col gap-0.5; }
+  .nav-grupo + .nav-grupo { @apply border-t border-neutro-800 pt-4; }
+  .nav-enlace { @apply flex items-center gap-3 rounded-chico px-3 py-2 text-15 text-lateral-texto no-underline hover:bg-neutro-800/60 hover:text-texto-sobre-oscuro; }
+  .nav-enlace[aria-current="page"] { @apply bg-neutro-800 font-semibold text-texto-sobre-oscuro; }
+  .nav-enlace[aria-current="page"] .icono { @apply text-lateral-activo; }
+  .nav-enlace[aria-disabled="true"] { @apply cursor-default opacity-45 hover:bg-transparent hover:text-lateral-texto; }
+  .nav-cuenta { @apply ml-auto rounded-full bg-aviso-300 px-2 text-xs font-semibold text-neutro-900; }
+  .nav-cuenta.error { @apply bg-rojo-600 text-texto-sobre-oscuro; }
+
+  /* Tarjetas y avisos */
+  .tarjeta { @apply rounded-medio border border-borde-default bg-fondo-superficie; }
+  .aviso { @apply flex gap-3 rounded-chico px-4 py-3 text-sm; }
+  .aviso .icono { @apply mt-0.5 size-[18px]; }
+  .aviso-error { @apply bg-estado-error-fondo text-estado-error; }
+  .aviso-info { @apply bg-estado-info-fondo text-estado-info; }
+  .aviso-aviso { @apply bg-estado-aviso-fondo text-estado-aviso; }
+}
