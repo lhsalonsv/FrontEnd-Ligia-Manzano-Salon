@@ -88,8 +88,9 @@
         <aside id="panel" class="fixed inset-y-0 right-0 z-40 hidden w-full flex-col overflow-y-auto border-l border-borde-default bg-fondo-superficie sm:w-[440px] xl:sticky xl:top-16 xl:z-auto xl:flex xl:h-[calc(100dvh-4rem)] xl:w-auto" aria-label="Detalle"></aside>
       </main>
 
-      <!-- Registrar compra: el formulario ocupa la zona principal y el resumen va a la derecha (abajo en pantallas angostas) -->
-      <main id="vista-registrar" class="hidden flex-1 xl:grid xl:grid-cols-[minmax(0,1fr)_420px]"></main>
+      <!-- Registrar compra: reemplaza a la lista. El formulario ocupa la zona principal y el resumen va a la derecha
+           (abajo en pantallas angostas). Se oculta con el atributo hidden y no con la clase: la clase pierde contra xl:grid. -->
+      <main id="vista-registrar" class="flex-1 xl:grid xl:grid-cols-[minmax(0,1fr)_420px]" hidden></main>
     </div>
   </div>
 

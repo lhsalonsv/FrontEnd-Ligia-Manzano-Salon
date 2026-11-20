@@ -91,8 +91,10 @@ const CLASE_FILA = 'min-h-14 w-full cursor-pointer border-b border-neutro-100 py
 function cambiarVista(vista) {
   estado.vista = vista;
   const registrar = vista === 'registrar';
-  $('vista-listas').classList.toggle('hidden', registrar);
-  $('vista-registrar').classList.toggle('hidden', !registrar);
+  // El atributo hidden (no la clase): la clase "hidden" pierde contra xl:grid y la lista seguía ocupando espacio
+  $('vista-listas').hidden = registrar;
+  $('vista-registrar').hidden = !registrar;
+  window.scrollTo(0, 0);
   $('btn-registrar').classList.toggle('hidden', registrar);
   if (registrar) {
     history.replaceState(null, '', `${location.pathname}?registrar`);
@@ -588,7 +590,10 @@ async function abrirRegistrar({ idProveedor = null, idProductos = [] } = {}) {
   $('vista-registrar').innerHTML = `
     <form id="form-compra" class="contents" novalidate>
       <section class="flex min-w-0 flex-col gap-4 p-4 sm:px-8 sm:py-6" aria-labelledby="titulo-registrar">
-        <h2 id="titulo-registrar" class="text-xl" tabindex="-1">Registrar compra</h2>
+        <div>
+          <button type="button" class="mb-1 inline-flex cursor-pointer items-center gap-1 text-sm font-semibold text-texto-secundario hover:text-texto-principal" data-accion="cancelar-compra">← Compras</button>
+          <h2 id="titulo-registrar" class="text-xl outline-none" tabindex="-1">Registrar compra</h2>
+        </div>
         <div id="form-error" class="aviso aviso-error hidden" role="alert"></div>
 
         <div class="tarjeta rounded-grande p-4 sm:px-6">
