@@ -21,6 +21,7 @@ export const DATOS_PRUEBA = {
   auth: true,
   clientes: true,
   servicios: true,
+  empleados: true,
   catalogos: true,
 };
 

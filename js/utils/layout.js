@@ -30,7 +30,7 @@ const MENU = [
     { id: 'compras', texto: 'Compras', href: 'compras.html', listo: false },
   ],
   [
-    { id: 'empleados', texto: 'Empleados', href: 'empleados.html', listo: false },
+    { id: 'empleados', texto: 'Empleados', href: 'empleados.html', listo: true },
     { id: 'comisiones', texto: 'Comisiones y planilla', href: 'comisiones.html', listo: false },
   ],
   [

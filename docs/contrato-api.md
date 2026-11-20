@@ -198,6 +198,70 @@ Respuesta: 201 / 200 con el servicio como en el GET por id. Cambiar el precio no
 
 Solo empleados activos. La usan Servicios (y después Agenda y Empleados).
 
+## Empleados (`tb_empleados`, `tb_empleado_especialidad`, `tb_horarios_empleado`)
+
+### `GET /api/empleados`
+
+Todos, activos y de baja (la lista es corta; el frontend filtra y busca).
+
+```json
+{
+  "quincena": { "inicio": "2026-12-01", "fin": "2026-12-15" },
+  "horarioSalon": [ { "diaSemana": 1, "abierto": true, "horaAbre": "08:00", "horaCierra": "18:00" } ],
+  "empleados": [
+    { "idEmpleado": 1, "nombreEmpleado": "Karla", "apellido": "Méndez", "puesto": "Estilista", "dui": "00000000-4",
+      "rol": null, "sueldoBaseMensual": 408.80, "recibeComision": true, "comisionesQuincena": 178.00,
+      "activo": true, "fechaBaja": null }
+  ]
+}
+```
+
+- `horarioSalon`: las 7 filas de `tb_horarios` (1 = lunes). `rol`: el del usuario ligado (`id_usuario`) o `null` si no tiene.
+- `comisionesQuincena`: suma de `tb_comisiones.monto` de la quincena en curso (con las devoluciones restando).
+
+### `GET /api/empleados/{id}`
+
+Todas las columnas de `tb_empleados` en camelCase, más:
+
+```json
+{
+  "especialidades": [1, 2, 3],
+  "horarios": [ { "diaSemana": 1, "horaInicio": "08:00", "horaFin": "12:00" }, { "diaSemana": 1, "horaInicio": "13:00", "horaFin": "17:00" } ],
+  "usuario": { "nombreUsuario": "ligia.manzano", "rol": "ADMINISTRADOR" }
+}
+```
+
+`usuario` es `null` si no entra al sistema. Horas en `"HH:MM"`.
+
+### `POST /api/empleados` y `PUT /api/empleados/{id}`
+
+```json
+{
+  "nombreEmpleado": "Paola Andrea", "apellido": "Guzmán Flores", "dui": "00000000-7", "telefono": "7000-0063",
+  "correoEmpleado": null, "fechaIngreso": "2026-12-15", "puesto": "Estilista", "sueldoBaseMensual": 408.80,
+  "recibeComision": true, "afpAdministradora": "CONFIA", "nupAfp": "000000003390", "numeroIsss": "000000472",
+  "especialidades": [1, 3],
+  "horarios": [ { "diaSemana": 1, "horaInicio": "08:00", "horaFin": "17:00" } ]
+}
+```
+
+`especialidades` y `horarios` reemplazan los que tenía (borrar e insertar en la misma transacción). El usuario no se toca aquí: se crea en Configuración → Usuarios y roles.
+
+| Campo | Regla |
+|---|---|
+| `nombreEmpleado`, `apellido` | obligatorios, hasta 80 |
+| `dui` | obligatorio, `00000000-0`, **único** → 409 con `campos.dui` |
+| `telefono` | obligatorio, 8 dígitos (`7000-0000`) o de 8 a 15 con `+` |
+| `fechaIngreso`, `puesto` | obligatorios; puesto hasta 40 (texto libre: Estilista, Manicurista, Recepcionista, Dueña) |
+| `sueldoBaseMensual` | obligatorio, ≥ 0, 2 decimales; 0 = no está en planilla (la dueña) |
+| `afpAdministradora`, `nupAfp` | los dos o ninguno; `CRECER` o `CONFIA`; NUP de 12 dígitos |
+| `numeroIsss` | opcional, 9 dígitos |
+| `horarios` | por día, 1 o 2 bloques; `horaFin > horaInicio`; dentro de `tb_horarios` de ese día; el salón abierto; los bloques no se cruzan (pueden tocarse: 12:00–12:00) |
+
+### `PATCH /api/empleados/{id}/baja`
+
+`{ "fechaBaja": "2026-12-20" }` → 200 con la ficha. Pone `fecha_baja` y `activo = false`, y borra su horario (deja de aparecer en la agenda). No se borra nada más: ventas y comisiones quedan. 400 si `fechaBaja` es antes de `fechaIngreso` o después de hoy (no se programan bajas a futuro).
+
 ## Catálogos de Hacienda
 
 - `GET /api/catalogos/actividades` → `[{ "codActividad": "96020", "descripcion": "Peluquería y otros tratamientos de belleza" }]` (CAT-019 completo).

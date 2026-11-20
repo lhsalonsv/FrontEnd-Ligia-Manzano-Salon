@@ -25,6 +25,7 @@ index.html                 Login (es la página de entrada en Vercel)
 inicio.html                Inicio; plantilla para las demás páginas internas
 clientes.html              Clientes: lista, ficha y formulario (nuevo / editar)
 servicios.html             Servicios: catálogo por especialidad, detalle y formulario
+empleados.html             Empleados: equipo, ficha, formulario con especialidades y horario, dar de baja
 css/input.css              Tema (tokens del diseño) y componentes → se compila a css/styles.css
 js/config.js               URL de la API, interruptores de datos de prueba, tiempos
 js/controllersWeb/         Un controlador por página: DOM y eventos
@@ -36,6 +37,7 @@ js/utils/layout.js         Menú lateral y barra superior de las páginas intern
 js/utils/icons.js          Iconos Lucide
 js/utils/formato.js        Dinero, fechas, duraciones, iniciales y escapar texto
 js/utils/calculos.js       Precio sin IVA y comisión (probado en tests/: npm test)
+js/utils/horario.js        Horario semanal de una empleada dentro del horario del salón (probado en tests/)
 js/utils/panel.js          Panel derecho de las pantallas de catálogo (ficha / formulario)
 js/utils/formulario.js     Campo con etiqueta y error; mostrar errores del frontend y del backend
 docs/contrato-api.md       Acuerdo de endpoints y JSON con el backend
