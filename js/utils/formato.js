@@ -52,6 +52,12 @@ export function fechaLarga(valor) {
   return f.getFullYear() === new Date().getFullYear() ? texto : `${texto} de ${f.getFullYear()}`;
 }
 
+/** 'Hoy, 7:43 a. m.' o '2 dic, 9:15 a. m.' (último acceso, último cambio). */
+export function fechaHora(valor) {
+  const f = aFecha(valor);
+  return `${fechaCorta(f)}, ${f.toLocaleTimeString('es-SV', { hour: 'numeric', minute: '2-digit' })}`;
+}
+
 /** 'Hoy 2:00' o '19 dic' (para citas: la hora solo importa si es hoy). */
 export function fechaCita(valor) {
   const f = aFecha(valor);

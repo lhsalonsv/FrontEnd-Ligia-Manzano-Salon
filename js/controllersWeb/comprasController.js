@@ -7,7 +7,7 @@
  */
 import { montarLayout } from '../utils/layout.js';
 import { icono } from '../utils/icons.js';
-import { escapar, dinero, numero, fechaCorta, fechaLarga, fechaIso, MESES } from '../utils/formato.js';
+import { escapar, dinero, numero, fechaCorta, fechaLarga, fechaHora, fechaIso, MESES } from '../utils/formato.js';
 import { centavos, totalesCompra } from '../utils/calculos.js';
 import { campo, entrada, mostrarErrores } from '../utils/formulario.js';
 import { crearPanel, htmlCabecera, htmlError, htmlExito } from '../utils/panel.js';
@@ -198,7 +198,7 @@ async function mostrarCompra(idCompra, aviso = '') {
     <dl class="datos">
       <dt>Documento</dt><dd><b class="font-semibold">${TIPO_DOCUMENTO[c.tipoDocumentoProveedor]}</b><small class="break-all">${escapar(c.numeroDocumentoProveedor ?? 'Sin número')}</small></dd>
       <dt>Pago</dt><dd>${c.fechaVencimientoPago ? `Vence el ${fechaLarga(c.fechaVencimientoPago)}` : 'De contado'}</dd>
-      <dt>Registró</dt><dd>${escapar(c.nombreUsuario)}<small>${fechaCorta(c.creadoEn)}, ${new Date(c.creadoEn).toLocaleTimeString('es-SV', { hour: 'numeric', minute: '2-digit' })}</small></dd>
+      <dt>Registró</dt><dd>${escapar(c.nombreUsuario)}<small>${fechaHora(c.creadoEn)}</small></dd>
     </dl>
     <div class="separa"></div>
     <div class="panel-seccion text-sm">

@@ -529,6 +529,112 @@ Respuestas:
 - 400 con `campos` (`idProveedor`, `fechaCompra`, `numeroDocumentoProveedor`, `detalle`). Un error de una línea: `campos.detalle` con el texto ("La línea 2: la cantidad tiene que ser mayor que 0.").
 - 409 `COMPRA_DUPLICADA` si ese proveedor ya tiene una compra registrada con ese `numeroDocumentoProveedor` (se registró dos veces el mismo documento): `campos.numeroDocumentoProveedor`, e `idCompraExistente`.
 
+## Configuración (`tb_emisores`, `tb_parametros`, `tb_horarios`, `tb_formas_pago`, `tb_usuarios`)
+
+Todo `/api/configuracion/*` y `/api/usuarios/*` es **solo para el rol Administrador** (403 para los demás). Cada cambio va a la bitácora con el usuario del token.
+
+`ultimoCambio` (en Negocio y en Reglas) sale de la bitácora: `{ "fechaHora": "2026-12-02T09:15:00-06:00", "nombreUsuario": "Ligia Manzano" }`, o `null` si nunca se cambió.
+
+### `GET /api/configuracion/negocio`
+
+La fila de `tb_emisores` (el salón como emisor de las facturas) y el estado de la conexión con Hacienda.
+
+```json
+{
+  "nombreComercial": "Ligia Manzano Salón", "nombre": "Ligia Manzano", "nit": "00000000000017", "nrc": "0000017",
+  "codActividad": "96020", "tipoEstablecimiento": "02", "idDistrito": 1, "complemento": "Calle Ficticia 200, San Salvador",
+  "telefono": "7000-0140", "correo": "salon@ligiamanzano.example", "codEstable": "M001", "codPuntoVenta": "P001",
+  "ambiente": "00", "certificadoVence": "2028-03-14",
+  "ultimoEnvio": { "fechaHora": "2026-12-12T14:04:00-06:00", "estado": "PROCESADO", "numeroControl": "DTE-01-M001P001-000000000000412" },
+  "ultimoCambio": { "fechaHora": "2026-12-02T09:15:00-06:00", "nombreUsuario": "Ligia Manzano" }
+}
+```
+
+- `ambiente` (`00` pruebas, `01` producción) y `certificadoVence` **no se editan aquí**: los pone el equipo en el servidor junto con la contraseña de Hacienda y la llave del certificado (variables de entorno, nunca en la base ni en esta pantalla).
+- `ultimoEnvio`: el DTE más reciente transmitido (`null` si todavía no hay).
+
+### `PUT /api/configuracion/negocio`
+
+Los mismos campos menos `ambiente`, `certificadoVence`, `ultimoEnvio` y `ultimoCambio`. Responde 200 con el `GET`.
+
+| Campo | Regla |
+|---|---|
+| `nombreComercial` | hasta 150 (opcional en Hacienda; en la factura sale si está) |
+| `nombre` | obligatorio, hasta 250: el nombre o razón social que tiene el NIT |
+| `nit` | 14 dígitos (o 9 si es DUI homologado), sin guiones |
+| `nrc` | 2 a 8 dígitos, sin guion |
+| `codActividad` | obligatorio, de CAT-019 |
+| `tipoEstablecimiento` | CAT-009: `01` sucursal, `02` casa matriz, `04` bodega, `07` predio o patio, `20` otro |
+| `idDistrito` | obligatorio, de CAT-008 |
+| `complemento` | obligatorio, hasta 200 (la dirección sin el distrito) |
+| `telefono` | obligatorio, hasta 30. `correo` obligatorio, hasta 100 |
+| `codEstable` | `M001`: una letra `M`, `B`, `S` o `P` y 3 dígitos. Va en el número de control |
+| `codPuntoVenta` | `P001`: `P` y 3 dígitos |
+
+Cambiar `nit`, `nrc` o `codEstable` solo afecta las facturas nuevas; las emitidas no se tocan.
+
+### `GET /api/configuracion/reglas` y `PUT /api/configuracion/reglas`
+
+Lo que el salón decide y cambia sin tocar el código. Se guarda **todo junto** en una transacción (una entrada de bitácora).
+
+```json
+{
+  "horarios": [ { "diaSemana": 1, "abierto": true, "horaAbre": "08:00", "horaCierra": "18:00" }, { "diaSemana": 7, "abierto": false, "horaAbre": null, "horaCierra": null } ],
+  "comisionServicioPct": 10, "comisionProducto": 2.00,
+  "isssEmpleadoPct": 3, "isssTopeMensual": 1000.00, "afpEmpleadoPct": 7.25,
+  "formasPago": [ { "idFormaPago": 1, "nombre": "Efectivo", "pideReferencia": false, "activo": true } ],
+  "ultimoCambio": null
+}
+```
+
+- Los números salen de `tb_parametros` (`COMISION_SERVICIO_PCT`, `COMISION_PRODUCTO`, `ISSS_EMPLEADO_PCT`, `ISSS_TOPE_MENSUAL`, `AFP_EMPLEADO_PCT`), convertidos a número. `IVA_PCT` no se cambia desde aquí.
+- El `PUT` manda `horarios` (los 7 días), los 5 números y `formasPago` solo con `{ idFormaPago, activo }`.
+
+| Campo | Regla |
+|---|---|
+| `horarios` | los 7 días; si `abierto`, `horaCierra > horaAbre`; al menos un día abierto |
+| `comisionServicioPct`, `isssEmpleadoPct`, `afpEmpleadoPct` | de 0 a 100, hasta 2 decimales |
+| `comisionProducto`, `isssTopeMensual` | ≥ 0, 2 decimales |
+| `formasPago` | al menos una activa; **Efectivo** no se desactiva (abre y cierra la caja) |
+
+- Las comisiones nuevas aplican desde la siguiente venta; lo ya cobrado no se recalcula. Cambiar `comisionProducto` no cambia la comisión de los productos que ya existen (cada uno tiene la suya).
+- 409 `HORARIO_FUERA` si el horario nuevo deja fuera el turno de una empleada activa (`tb_horarios_empleado`): `{ "mensaje": "Karla Méndez trabaja el sábado hasta las 4:00 p. m. Cambie primero su horario.", "codigo": "HORARIO_FUERA" }`.
+
+### `GET /api/usuarios`
+
+```json
+[
+  { "idUsuario": 1, "nombreUsuario": "ligia.manzano", "nombreCompleto": "Ligia Manzano", "rol": "ADMINISTRADOR", "activo": true,
+    "debeCambiarContrasena": false, "ultimoAcceso": "2026-12-12T07:43:00-06:00", "idEmpleado": 5 }
+]
+```
+
+- `rol`: `ADMINISTRADOR` · `RECEPCIONISTA` · `CONTADOR` · `AUDITOR` (los 4 de `tb_roles`). `idEmpleado`: el empleado ligado (`tb_empleados.id_usuario`) o `null`.
+
+### `POST /api/usuarios`
+
+`{ "nombreUsuario": "paola.gomez", "nombreCompleto": "Paola Gómez", "rol": "RECEPCIONISTA", "idEmpleado": null }`
+
+- `nombreUsuario`: obligatorio, 3 a 50, solo minúsculas, números, punto, guion y guion bajo; **único** (409 `USUARIO_DUPLICADO` con `campos.nombreUsuario`). No se cambia después.
+- `nombreCompleto`: obligatorio, hasta 150. `idEmpleado`: opcional; un empleado activo que no tenga usuario.
+- La API genera una **contraseña temporal** al azar (al menos `CONTRASENA_MINIMA` caracteres), guarda solo su hash y pone `debe_cambiar_contrasena = true`.
+- 201: `{ "usuario": { …como en GET… }, "contrasenaTemporal": "k7Rm-2pQx-9Lwd" }`. **Es la única vez que la API devuelve la contraseña**; la administradora se la entrega a la persona en persona.
+
+### `PUT /api/usuarios/{id}`
+
+`{ "nombreCompleto": "Paola Gómez", "rol": "RECEPCIONISTA", "idEmpleado": null }` → 200 con el usuario.
+
+- Si cambia el rol, se cierran sus sesiones (`tb_sesiones`, motivo `ADMIN`): vuelve a entrar con el rol nuevo.
+- 400 si la administradora se quita a sí misma el rol de Administrador, o si deja al sistema sin ningún administrador activo.
+
+### `POST /api/usuarios/{id}/restablecer-contrasena`
+
+Sin cuerpo → 200 `{ "contrasenaTemporal": "…" }`. Pone `debe_cambiar_contrasena = true`, limpia `intentos_fallidos` y `bloqueado_hasta` (también sirve para desbloquear) y cierra sus sesiones (motivo `ADMIN`).
+
+### `PATCH /api/usuarios/{id}/activo`
+
+`{ "activo": false }` → 200 con el usuario. Desactivar cierra sus sesiones (motivo `DESACTIVADO`) y ya no puede entrar; no se borra (su nombre queda en la bitácora, ventas y compras). 400 si es el propio usuario o el último administrador activo.
+
 ## Catálogos de Hacienda
 
 - `GET /api/catalogos/actividades` → `[{ "codActividad": "96020", "descripcion": "Peluquería y otros tratamientos de belleza" }]` (CAT-019 completo).

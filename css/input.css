@@ -153,7 +153,18 @@
   .segmento button { @apply cursor-pointer rounded-chico px-3 py-1.5 text-sm font-semibold text-texto-secundario hover:text-texto-principal; }
   .segmento button[aria-pressed="true"] { @apply bg-fondo-superficie text-texto-principal shadow-sm; }
 
-  .fila-p {@apply grid grid-cols-[minmax(0,1fr)_120px] items-center gap-3 px-4 sm:grid-cols-[minmax(0,1fr)_120px_80px] md:grid-cols-[minmax(0,1fr)_128px_88px_80px_88px]; }
+  /* Usuarios: persona | usuario | rol | último acceso | estado */
+  .fila-u { @apply grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 sm:grid-cols-[minmax(0,1fr)_112px_auto] md:grid-cols-[minmax(0,1fr)_128px_112px_136px_112px]; }
+
+  /* Ventana (<dialog>) centrada con fondo oscuro */
+  .dialogo { @apply m-auto w-[min(calc(100%-2rem),34rem)] max-h-[calc(100dvh-2rem)] overflow-hidden rounded-grande border border-borde-default bg-fondo-superficie p-0 text-texto-principal shadow-xl backdrop:bg-neutro-900/50; }
+
+  /* Secciones de Configuración: pestañas en celular y tablet; lista vertical en pantalla ancha (mockup) */
+  .secciones { @apply xl:flex-col xl:gap-0.5 xl:overflow-visible xl:shadow-none; }
+  .secciones .filtro { @apply xl:rounded-chico xl:border-b-0 xl:px-3 xl:py-2 xl:text-left xl:text-15 xl:font-normal xl:hover:bg-neutro-200/60; }
+  .secciones .filtro[aria-pressed="true"] { @apply xl:bg-fondo-superficie xl:font-semibold xl:shadow-sm; }
+
+  .fila-p { @apply grid grid-cols-[minmax(0,1fr)_120px] items-center gap-3 px-4 sm:grid-cols-[minmax(0,1fr)_120px_80px] md:grid-cols-[minmax(0,1fr)_128px_88px_80px_88px]; }
 
   /* Opción tipo botón (radio o checkbox escondido dentro de un label) */
   .chip { @apply inline-flex h-9 cursor-pointer items-center rounded-chico border border-borde-fuerte bg-fondo-superficie px-3 text-sm font-semibold has-checked:border-neutro-900 has-checked:bg-neutro-900 has-checked:text-texto-sobre-oscuro has-focus-visible:outline-2 has-focus-visible:outline-accion-foco; }

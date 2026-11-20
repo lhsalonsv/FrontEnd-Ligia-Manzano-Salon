@@ -38,11 +38,12 @@ const MENU = [
     { id: 'facturacion', texto: 'Facturación', href: 'facturacion.html', listo: false },
     { id: 'reportes', texto: 'Reportes', href: 'reportes.html', listo: false },
     { id: 'bitacora', texto: 'Bitácora', href: 'bitacora.html', listo: false },
-    { id: 'configuracion', texto: 'Configuración', href: 'configuracion.html', listo: false },
+    // Lo único ya decidido de los permisos: Configuración es solo de la administradora (mockup)
+    { id: 'configuracion', texto: 'Configuración', href: 'configuracion.html', listo: true, roles: ['ADMINISTRADOR'] },
   ],
 ];
 
-const NOMBRE_ROL = {
+export const NOMBRE_ROL = {
   ADMINISTRADOR: 'Administrador',
   RECEPCIONISTA: 'Recepcionista',
   CONTADOR: 'Contador',

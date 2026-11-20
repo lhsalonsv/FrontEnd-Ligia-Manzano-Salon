@@ -3,7 +3,7 @@
  * Pantalla Empleados: equipo (activas / de baja), ficha y formulario con especialidades y horario semanal.
  * La lista es corta, así que se pide una vez y se filtra aquí.
  */
-import { montarLayout } from '../utils/layout.js';
+import { montarLayout, NOMBRE_ROL } from '../utils/layout.js';
 import { icono } from '../utils/icons.js';
 import { escapar, dinero, fechaCorta, mesAnio, MESES } from '../utils/formato.js';
 import { campo, entrada, mostrarErrores } from '../utils/formulario.js';
@@ -20,7 +20,6 @@ const panelEl = $('panel');
 const SIN_CAMBIOS = 'Hay cambios sin guardar. ¿Salir sin guardar?';
 const PUESTOS = ['Estilista', 'Manicurista', 'Recepcionista', 'Dueña'];
 const AFP = { CRECER: 'AFP Crecer', CONFIA: 'AFP Confía' };
-const NOMBRE_ROL = { ADMINISTRADOR: 'Administrador', RECEPCIONISTA: 'Recepcionista', CONTADOR: 'Contador', AUDITOR: 'Auditor' };
 
 const estado = {
   empleados: [],
@@ -177,7 +176,9 @@ async function mostrarFicha(idEmpleado, aviso = '') {
         <button type="button" class="btn btn-secundario" disabled title="Disponible cuando se programe Comisiones y planilla">Ver comisiones</button>
       </div>
       <div id="zona-baja" class="flex items-center justify-between gap-3 text-sm">
-        <button type="button" class="font-semibold underline decoration-borde-fuerte underline-offset-2 disabled:opacity-60" disabled title="Los usuarios se crean en Configuración → Usuarios y roles">${e.usuario ? 'Cambiar usuario' : 'Crearle un usuario'}</button>
+        ${sesion.usuario.rol === 'ADMINISTRADOR'
+          ? `<a class="font-semibold underline decoration-borde-fuerte underline-offset-2" href="configuracion.html?seccion=usuarios&idEmpleado=${e.idEmpleado}">${e.usuario ? 'Cambiar usuario' : 'Crearle un usuario'}</a>`
+          : '<span></span>'}
         <button type="button" data-accion="pedir-baja" class="cursor-pointer font-semibold text-estado-error underline decoration-rojo-200 underline-offset-2">Dar de baja</button>
       </div>` : '<p class="text-13 text-texto-secundario">Dar de baja no borra: sus ventas y comisiones quedan en el historial.</p>'}
     </div>`;

@@ -3,12 +3,13 @@
  * Personas, DUI, NUP e ISSS ficticios. Forma: el DTO de GET /api/empleados/{id} (docs/contrato-api.md).
  */
 
-/** tb_horarios: 1 = lunes … 7 = domingo. */
+/** tb_horarios: 1 = lunes … 7 = domingo. Lunes a sábado 8:00–18:00, como el SQL y el mockup de Configuración
+ *  (el sábado está por confirmar con el salón). */
 export const HORARIO_SALON_PRUEBA = [1, 2, 3, 4, 5, 6, 7].map((diaSemana) => ({
   diaSemana,
   abierto: diaSemana !== 7,
   horaAbre: diaSemana === 7 ? null : '08:00',
-  horaCierra: diaSemana === 7 ? null : (diaSemana === 6 ? '16:00' : '18:00'),
+  horaCierra: diaSemana === 7 ? null : '18:00',
 }));
 
 const semana = (dias, bloques) => dias.flatMap((diaSemana) => bloques.map(([horaInicio, horaFin]) => ({ diaSemana, horaInicio, horaFin })));
