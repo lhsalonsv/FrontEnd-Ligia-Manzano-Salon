@@ -46,6 +46,15 @@ export function fechaCita(valor) {
   return `Hoy ${hora}`;
 }
 
+/** 90 → '1 h 30', 60 → '1 h', 45 → '45 min', null → '—' */
+export function duracion(minutos) {
+  if (!minutos) return '—';
+  const h = Math.floor(minutos / 60);
+  const m = minutos % 60;
+  if (!h) return `${m} min`;
+  return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`;
+}
+
 /** 'marzo de 2025' */
 export const mesAnio = (valor) => {
   const f = aFecha(valor);

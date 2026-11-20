@@ -133,6 +133,71 @@ Validaciones (el frontend las hace y el backend las repite; error 400 con `campo
 
 No se puede exigir DUI ni correo para facturarle a un consumidor final.
 
+## Servicios (`tb_servicios`)
+
+### `GET /api/servicios`
+
+Todos los servicios, activos e inactivos (el catálogo es corto; el frontend filtra y busca). Incluye los parámetros que la pantalla necesita para calcular la comisión (`tb_parametros`):
+
+```json
+{
+  "comisionServicioPct": 10,
+  "ivaPct": 13,
+  "servicios": [
+    { "idServicio": 10, "nombreServicio": "Keratina", "descripcion": "Alisado con keratina y sellado.", "idEspecialidad": 3,
+      "duracionMin": 120, "precio": 60.00, "precioDesde": false, "activo": true }
+  ]
+}
+```
+
+### `GET /api/servicios/{id}`
+
+El servicio, más:
+
+```json
+{
+  "vecesEsteMes": 9,
+  "tieneVentas": true,
+  "quienes": [ { "idEmpleado": 1, "nombreCompleto": "Karla Méndez", "cargo": "Estilista", "vecesEsteMes": 5 } ]
+}
+```
+
+- `vecesEsteMes`: líneas de venta pagadas de este servicio en el mes actual. `tieneVentas`: si aparece en alguna venta.
+- `quienes`: empleados activos con la especialidad del servicio (`tb_empleado_especialidad`), con cuántas veces lo hicieron este mes.
+
+### `POST /api/servicios` y `PUT /api/servicios/{id}`
+
+```json
+{ "nombreServicio": "Alisado express", "idEspecialidad": 3, "descripcion": null, "duracionMin": 90, "precio": 35.00, "precioDesde": true }
+```
+
+Respuesta: 201 / 200 con el servicio como en el GET por id. Cambiar el precio no toca ventas pasadas (cada línea de venta guarda su precio).
+
+| Campo | Regla |
+|---|---|
+| `nombreServicio` | obligatorio, hasta 80; **no se repite** (sin importar mayúsculas) → 409 con `campos.nombreServicio` |
+| `idEspecialidad` | obligatorio, existe en `tb_especialidades` |
+| `descripcion` | hasta 300 |
+| `duracionMin` | opcional; entero de 5 a 600 (es la sugerida; la cita guarda la real) |
+| `precio` | obligatorio, con IVA, de 0 a 9999.99, 2 decimales |
+
+### `PATCH /api/servicios/{id}/activo`
+
+`{ "activo": false }` → 200 con el servicio. Los servicios no se borran (tienen ventas); inactivo = no sale en la agenda ni en el POS.
+
+### Comisión por servicio
+
+`round(round(precio / (1 + ivaPct/100), 2) × comisionServicioPct / 100, 2)`: primero el precio sin IVA a 2 decimales (`tb_comisiones.base_sin_iva`) y luego el porcentaje. Ejemplos: $60.00 → $53.10 → $5.31; $35.00 → $30.97 → $3.10. En precios "desde" se calcula con el precio cobrado en la venta. El frontend usa la misma fórmula (`js/utils/calculos.js`, probada con `npm test`).
+
+### `GET /api/especialidades`
+
+```json
+[ { "idEspecialidad": 3, "nombreEspecialidad": "Tratamientos",
+    "empleados": [ { "idEmpleado": 1, "nombreCompleto": "Karla Méndez", "cargo": "Estilista" } ] } ]
+```
+
+Solo empleados activos. La usan Servicios (y después Agenda y Empleados).
+
 ## Catálogos de Hacienda
 
 - `GET /api/catalogos/actividades` → `[{ "codActividad": "96020", "descripcion": "Peluquería y otros tratamientos de belleza" }]` (CAT-019 completo).

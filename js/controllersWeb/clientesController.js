@@ -9,13 +9,15 @@ import { icono } from '../utils/icons.js';
 import { escapar, iniciales, dinero, numero, fechaCorta, fechaCita, mesAnio, MESES } from '../utils/formato.js';
 import { listarClientes, obtenerCliente, guardarCliente } from '../services/clientesService.js';
 import { listarActividades, listarDistritos } from '../services/catalogosService.js';
+import { campo, entrada, mostrarErrores } from '../utils/formulario.js';
+import { crearPanel, htmlCabecera, htmlError, htmlExito } from '../utils/panel.js';
 
 const sesion = montarLayout({ accion: { id: 'btn-nuevo', texto: 'Nuevo cliente', icono: 'mas' } });
 
 const $ = (id) => document.getElementById(id);
 const lista = $('lista');
-const panel = $('panel');
-const fondoPanel = $('fondo-panel');
+const panelEl = $('panel');
+const SIN_CAMBIOS = 'Hay cambios sin guardar. ¿Salir sin guardar?';
 
 const estado = {
   buscar: '',
@@ -24,8 +26,20 @@ const estado = {
   idSeleccionado: null,
   peticion: 0,         // para ignorar respuestas viejas si se escribe rápido en el buscador
   formularioSucio: false,
-  volverFoco: null,    // a dónde regresa el foco al cerrar el panel
 };
+
+const panel = crearPanel({
+  panel: panelEl,
+  fondo: $('fondo-panel'),
+  vacio: `${icono('clientes', 'mx-auto mb-3 size-8 text-texto-deshabilitado')}<p>Elige un cliente de la lista para ver su ficha.</p>`,
+  alCerrar: () => {
+    if (estado.formularioSucio && !confirm(SIN_CAMBIOS)) return false;
+    estado.formularioSucio = false;
+    estado.idSeleccionado = null;
+    marcarSeleccion();
+    return true;
+  },
+});
 
 const nombreCompleto = (c) => [c.nombre, c.apellido].filter(Boolean).join(' ');
 
@@ -97,46 +111,7 @@ function marcarSeleccion() {
   }
 }
 
-// --- Panel -------------------------------------------------------------------
-
-const enPantallaAncha = () => window.matchMedia('(min-width: 80rem)').matches; // xl
-
-function abrirPanel() {
-  panel.classList.remove('hidden');
-  panel.classList.add('flex');
-  fondoPanel.classList.remove('hidden');
-}
-
-function cerrarPanel() {
-  if (estado.formularioSucio && !confirm('Hay cambios sin guardar. ¿Salir sin guardar?')) return;
-  estado.formularioSucio = false;
-  estado.idSeleccionado = null;
-  marcarSeleccion();
-  fondoPanel.classList.add('hidden');
-  if (enPantallaAncha()) {
-    mostrarVacio();
-  } else {
-    panel.classList.add('hidden');
-    panel.classList.remove('flex');
-  }
-  estado.volverFoco?.focus();
-}
-
-function mostrarVacio() {
-  panel.setAttribute('aria-label', 'Ficha del cliente');
-  panel.innerHTML = `<div class="m-auto max-w-60 p-6 text-center text-texto-secundario">
-    ${icono('clientes', 'mx-auto mb-3 size-8 text-texto-deshabilitado')}
-    <p>Elige un cliente de la lista para ver su ficha.</p>
-  </div>`;
-}
-
-function htmlCabecera(titulo, subtitulo, conIniciales) {
-  return `<div class="flex items-start gap-3 px-6 pt-6 pb-4">
-    ${conIniciales ? `<span class="ini size-12 text-base" aria-hidden="true">${escapar(iniciales(titulo))}</span>` : ''}
-    <div class="min-w-0"><h2 id="panel-titulo" tabindex="-1" class="text-xl leading-tight outline-none">${escapar(titulo)}</h2><p class="mt-0.5 text-sm text-texto-secundario">${subtitulo}</p></div>
-    <button type="button" data-accion="cerrar" class="ml-auto grid size-8 shrink-0 place-items-center rounded-chico text-texto-secundario hover:bg-fondo-sutil" aria-label="Cerrar">${icono('cerrar')}</button>
-  </div>`;
-}
+// --- Ficha -------------------------------------------------------------------
 
 const formatoNit = (nit) => (nit?.length === 14 ? nit.replace(/^(\d{4})(\d{6})(\d{3})(\d)$/, '$1-$2-$3-$4') : nit?.replace(/^(\d{8})(\d)$/, '$1-$2'));
 const formatoNrc = (nrc) => nrc?.replace(/^(\d+)(\d)$/, '$1-$2');
@@ -145,9 +120,9 @@ async function mostrarFicha(idCliente, aviso = '') {
   estado.idSeleccionado = Number(idCliente);
   estado.formularioSucio = false;
   marcarSeleccion();
-  abrirPanel();
-  panel.setAttribute('aria-label', 'Ficha del cliente');
-  panel.innerHTML = '<p class="m-auto p-6 text-texto-secundario">Cargando ficha…</p>';
+  panel.abrir();
+  panelEl.setAttribute('aria-label', 'Ficha del cliente');
+  panelEl.innerHTML = '<p class="m-auto p-6 text-texto-secundario">Cargando ficha…</p>';
 
   let c;
   let actividades = [];
@@ -156,7 +131,7 @@ async function mostrarFicha(idCliente, aviso = '') {
     c = await obtenerCliente(idCliente);
     if (c.razonSocial) [actividades, distritos] = await Promise.all([listarActividades(), listarDistritos()]);
   } catch (error) {
-    panel.innerHTML = `${htmlCabecera('Clientes', '', false)}<div class="aviso aviso-error mx-6">${icono('alerta')}<p>${escapar(error.message)}</p></div>`;
+    panelEl.innerHTML = `${htmlCabecera('Clientes', '')}${htmlError(error.message)}`;
     return;
   }
   if (estado.idSeleccionado !== c.idCliente) return; // se eligió otro mientras cargaba
@@ -165,9 +140,9 @@ async function mostrarFicha(idCliente, aviso = '') {
   const actividad = actividades.find((a) => a.codActividad === c.codActividad);
   const distrito = distritos.find((d) => d.idDistrito === c.idDistrito);
 
-  panel.innerHTML = `
-    ${htmlCabecera(nombreCompleto(c), `Cliente desde ${mesAnio(c.creadoEn)}`, true)}
-    ${aviso ? `<div class="aviso aviso-exito mx-6 mb-4" role="status">${icono('info')}<p>${escapar(aviso)}</p></div>` : ''}
+  panelEl.innerHTML = `
+    ${htmlCabecera(nombreCompleto(c), `Cliente desde ${mesAnio(c.creadoEn)}`, { conIniciales: true })}
+    ${aviso ? htmlExito(aviso) : ''}
     ${c.alergias ? `<div class="aviso aviso-aviso mx-6 text-texto-principal">${icono('advertencia', 'text-estado-aviso')}<div><b class="block font-semibold">Alergia registrada</b>${escapar(c.alergias)}</div></div>` : ''}
     <div class="separa"></div>
     <dl class="datos">
@@ -210,31 +185,17 @@ async function mostrarFicha(idCliente, aviso = '') {
         <button type="button" class="btn btn-secundario" disabled title="Disponible cuando se programe el Punto de venta">Nueva venta</button>
       </div>
     </div>`;
-  panel.dataset.idCliente = c.idCliente;
-  panel.cliente = c;
-  if (!enPantallaAncha() || aviso) $('panel-titulo').focus();
+  panelEl.cliente = c;
+  panel.enfocarTitulo(Boolean(aviso));
 }
 
 // --- Formulario --------------------------------------------------------------
 
-/** Campo con etiqueta, caja y mensaje de error. `columna` = nombre en tb_clientes (data-campo). */
-function campo({ nombre, columna, etiqueta, obligatorio = false, ayuda = '', control }) {
-  return `<div data-campo="${columna}">
-    <label class="campo-etiqueta" for="f-${nombre}">${etiqueta}${obligatorio ? ' <span class="text-estado-error" aria-hidden="true">*</span>' : ' <span class="opcional">opcional</span>'}</label>
-    <div class="campo-caja">${control}</div>
-    ${ayuda ? `<p class="campo-ayuda" id="ayuda-${nombre}">${ayuda}</p>` : ''}
-    <p class="campo-error hidden" id="error-${nombre}"></p>
-  </div>`;
-}
-
-const entrada = (nombre, valor, extra = '') =>
-  `<input id="f-${nombre}" name="${nombre}" value="${escapar(valor ?? '')}" ${extra}>`;
-
 async function mostrarFormulario(cliente = null) {
   estado.formularioSucio = false;
-  abrirPanel();
+  panel.abrir();
   const editando = Boolean(cliente);
-  panel.setAttribute('aria-label', editando ? 'Editar cliente' : 'Nuevo cliente');
+  panelEl.setAttribute('aria-label', editando ? 'Editar cliente' : 'Nuevo cliente');
 
   let actividades = [];
   let distritos = [];
@@ -249,8 +210,8 @@ async function mostrarFormulario(cliente = null) {
   const departamentos = Object.groupBy?.(distritos, (d) => d.departamento)
     ?? distritos.reduce((g, d) => ((g[d.departamento] ??= []).push(d), g), {});
 
-  panel.innerHTML = `
-    ${htmlCabecera(editando ? `Editar ${nombreCompleto(c)}` : 'Nuevo cliente', 'Solo el nombre y el teléfono son obligatorios', false)}
+  panelEl.innerHTML = `
+    ${htmlCabecera(editando ? `Editar ${nombreCompleto(c)}` : 'Nuevo cliente', 'Solo el nombre y el teléfono son obligatorios')}
     <form id="form-cliente" class="flex flex-1 flex-col" novalidate>
       <div id="form-error" class="aviso aviso-error mx-6 mb-4 hidden" role="alert"></div>
       <div class="flex flex-col gap-4 px-6">
@@ -370,26 +331,6 @@ function leerFormulario(form, actividades) {
   return { datos, errores };
 }
 
-function mostrarErrores(form, errores) {
-  for (const p of form.querySelectorAll('.campo-error')) {
-    p.classList.add('hidden');
-    p.textContent = '';
-  }
-  for (const control of form.querySelectorAll('[aria-invalid]')) control.removeAttribute('aria-invalid');
-
-  for (const [nombre, mensaje] of Object.entries(errores)) {
-    const p = $(`error-${nombre}`);
-    const control = form.elements[nombre];
-    if (!p || !control) continue;
-    p.textContent = mensaje;
-    p.classList.remove('hidden');
-    control.setAttribute('aria-invalid', 'true');
-    control.setAttribute('aria-describedby', [`error-${nombre}`, control.id === 'f-alergias' ? 'ayuda-alergias' : ''].join(' ').trim());
-  }
-  if (form.querySelector('#fiscal [aria-invalid="true"]')) $('fiscal').open = true;
-  Object.keys(errores).map((n) => form.elements[n]).find(Boolean)?.focus();
-}
-
 async function enviarFormulario(evento, cliente, actividades) {
   evento.preventDefault();
   const form = evento.currentTarget;
@@ -441,40 +382,36 @@ if (sesion) {
     });
   }
 
+  const sePuedeSalir = () => !estado.formularioSucio || confirm(SIN_CAMBIOS);
+
   lista.addEventListener('click', (e) => {
     const fila = e.target.closest('[data-id]');
-    if (!fila) return;
-    if (estado.formularioSucio && !confirm('Hay cambios sin guardar. ¿Salir sin guardar?')) return;
-    estado.volverFoco = fila;
+    if (!fila || !sePuedeSalir()) return;
+    panel.abrir(fila);
     mostrarFicha(fila.dataset.id);
   });
 
   $('cargar-mas').querySelector('button').addEventListener('click', () => cargarLista({ mas: true }));
 
   $('btn-nuevo').addEventListener('click', (e) => {
-    if (estado.formularioSucio && !confirm('Hay cambios sin guardar. ¿Salir sin guardar?')) return;
-    estado.volverFoco = e.currentTarget;
+    if (!sePuedeSalir()) return;
     estado.idSeleccionado = null;
     marcarSeleccion();
+    panel.abrir(e.currentTarget);
     mostrarFormulario();
   });
 
-  panel.addEventListener('click', (e) => {
+  panelEl.addEventListener('click', (e) => {
     const accion = e.target.closest('[data-accion]')?.dataset.accion;
-    if (accion === 'cerrar') cerrarPanel();
-    if (accion === 'editar') mostrarFormulario(panel.cliente);
+    if (accion === 'cerrar') panel.cerrar();
+    if (accion === 'editar') mostrarFormulario(panelEl.cliente);
     if (accion === 'cancelar') {
-      if (estado.formularioSucio && !confirm('Hay cambios sin guardar. ¿Salir sin guardar?')) return;
+      if (!sePuedeSalir()) return;
       estado.formularioSucio = false;
       if (estado.idSeleccionado) mostrarFicha(estado.idSeleccionado);
-      else cerrarPanel();
+      else panel.cerrar();
     }
   });
-  fondoPanel.addEventListener('click', cerrarPanel);
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !panel.classList.contains('hidden') && !enPantallaAncha()) cerrarPanel();
-  });
 
-  mostrarVacio();
   cargarLista();
 }

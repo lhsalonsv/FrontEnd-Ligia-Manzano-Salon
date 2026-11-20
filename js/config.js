@@ -20,6 +20,7 @@ export const API_BASE_URL = esLocal
 export const DATOS_PRUEBA = {
   auth: true,
   clientes: true,
+  servicios: true,
   catalogos: true,
 };
 

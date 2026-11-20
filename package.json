@@ -5,8 +5,10 @@
   "description": "Frontend del sistema administrativo de Ligia Manzano Salón (HTML + Tailwind CSS + JavaScript).",
   "scripts": {
     "dev": "tailwindcss -i ./css/input.css -o ./css/styles.css --watch",
-    "build": "tailwindcss -i ./css/input.css -o ./css/styles.css --minify"
+    "build": "tailwindcss -i ./css/input.css -o ./css/styles.css --minify",
+    "test": "node --test \"tests/*.test.js\""
   },
+  "type": "module",
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.5",
     "tailwindcss": "^4.3.5"

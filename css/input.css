@@ -135,6 +135,19 @@
 
   /* Lista de clientes: en celular solo nombre (y próxima cita desde sm); las demás columnas desde md */
   .fila-cli { @apply grid items-center gap-3 px-4 sm:grid-cols-[minmax(0,1fr)_140px] md:grid-cols-[minmax(0,1fr)_96px_56px_88px_150px]; }
+  /* Lista de servicios: en celular nombre y precio; las demás columnas desde md */
+  .fila-s { @apply grid grid-cols-[minmax(0,1fr)_88px] items-center gap-3 px-4 md:grid-cols-[minmax(0,1fr)_72px_96px_80px_112px]; }
+
+  /* Opción tipo botón (radio o checkbox escondido dentro de un label) */
+  .chip { @apply inline-flex h-9 cursor-pointer items-center rounded-chico border border-borde-fuerte bg-fondo-superficie px-3 text-sm font-semibold has-checked:border-neutro-900 has-checked:bg-neutro-900 has-checked:text-texto-sobre-oscuro has-focus-visible:outline-2 has-focus-visible:outline-accion-foco; }
+  .chip input { @apply sr-only; }
+
+  /* Insignia de estado (Activo / Inactivo) */
+  .insignia { @apply inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold; }
+  .insignia::before { content: ""; @apply size-1.5 rounded-full bg-current; }
+  .insignia-ok { @apply bg-estado-exito-fondo text-estado-exito; }
+  .insignia-apagada { @apply bg-neutro-100 text-texto-secundario; }
+
   .ini { @apply grid size-8 shrink-0 place-items-center rounded-full bg-neutro-100 text-xs font-semibold; }
 
   /* Panel derecho (ficha o formulario) */
