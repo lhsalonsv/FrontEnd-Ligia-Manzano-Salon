@@ -27,7 +27,7 @@ const MENU = [
   ],
   [
     { id: 'servicios', texto: 'Servicios', href: 'servicios.html', listo: true },
-    { id: 'inventario', texto: 'Inventario', href: 'inventario.html', listo: false },
+    { id: 'inventario', texto: 'Inventario', href: 'inventario.html', listo: true },
     { id: 'compras', texto: 'Compras', href: 'compras.html', listo: false },
   ],
   [
@@ -81,10 +81,10 @@ function htmlBarra(titulo, usuario, accion) {
   return `
     <button type="button" id="btn-abrir-menu" class="-ml-2 rounded-chico p-2 hover:bg-fondo-sutil lg:hidden" aria-label="Abrir menú" aria-controls="lateral" aria-expanded="false">${icono('menu')}</button>
     <h1 class="text-xl">${escapar(titulo)}</h1>
-    <div class="ml-auto flex items-center gap-4">
+    <div class="ml-auto flex items-center gap-2 sm:gap-4">
       ${boton}
       <div class="flex items-center gap-3 text-sm leading-tight">
-        <span class="grid size-9 place-items-center rounded-full bg-marca-carbon text-sm font-semibold text-texto-sobre-oscuro" aria-hidden="true">${escapar(iniciales(usuario.nombreCompleto))}</span>
+        <span class="grid size-9 place-items-center max-sm:hidden rounded-full bg-marca-carbon text-sm font-semibold text-texto-sobre-oscuro" aria-hidden="true">${escapar(iniciales(usuario.nombreCompleto))}</span>
         <div class="hidden sm:block">
           <b class="block text-15 font-semibold">${escapar(usuario.nombreCompleto)}</b>
           <span class="text-texto-secundario">${escapar(NOMBRE_ROL[usuario.rol] ?? usuario.rol)}</span>

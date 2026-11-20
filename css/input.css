@@ -141,15 +141,26 @@
   /* Lista de empleados: en celular persona y estado; salario desde sm; acceso y comisiones desde md */
   .fila-e { @apply grid grid-cols-[minmax(0,1fr)_72px] items-center gap-3 px-4 sm:grid-cols-[minmax(0,1fr)_112px_72px] md:grid-cols-[minmax(0,1fr)_120px_112px_112px_72px]; }
 
+  /* Lista de productos: en celular producto y existencia; precio desde sm; costo y valor desde md */
+  .fila-p { @apply grid grid-cols-[minmax(0,1fr)_120px] items-center gap-3 px-4 sm:grid-cols-[minmax(0,1fr)_120px_80px] md:grid-cols-[minmax(0,1fr)_128px_88px_80px_88px]; }
+
   /* Opción tipo botón (radio o checkbox escondido dentro de un label) */
   .chip { @apply inline-flex h-9 cursor-pointer items-center rounded-chico border border-borde-fuerte bg-fondo-superficie px-3 text-sm font-semibold has-checked:border-neutro-900 has-checked:bg-neutro-900 has-checked:text-texto-sobre-oscuro has-focus-visible:outline-2 has-focus-visible:outline-accion-foco; }
   .chip input { @apply sr-only; }
 
   /* Insignia de estado (Activo / Inactivo) */
-  .insignia { @apply inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold; }
+  .insignia { @apply inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap; }
   .insignia::before { content: ""; @apply size-1.5 rounded-full bg-current; }
   .insignia-ok { @apply bg-estado-exito-fondo text-estado-exito; }
   .insignia-apagada { @apply bg-neutro-100 text-texto-secundario; }
+  .insignia-aviso { @apply bg-estado-aviso-fondo text-estado-aviso; }
+  .insignia-error { @apply bg-estado-error-fondo text-estado-error; }
+
+  /* Opción grande con título y explicación (radio escondido): "Qué pasó" en Ajustar existencia */
+  .opcion { @apply flex cursor-pointer items-start gap-3 rounded-medio border border-borde-fuerte p-3 text-sm has-checked:border-neutro-900 has-checked:ring-1 has-checked:ring-neutro-900 has-focus-visible:outline-2 has-focus-visible:outline-accion-foco; }
+  .opcion input { @apply mt-0.5 size-4 shrink-0 accent-neutro-900; }
+  .opcion b { @apply block font-semibold; }
+  .opcion small { @apply block text-13 text-texto-secundario; }
 
   .ini { @apply grid size-8 shrink-0 place-items-center rounded-full bg-neutro-100 text-xs font-semibold; }
 

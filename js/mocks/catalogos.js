@@ -22,3 +22,10 @@ export const DISTRITOS_PRUEBA = [
   { idDistrito: 5, distrito: 'Santa Tecla', municipio: 'La Libertad Sur', departamento: 'La Libertad' },
   { idDistrito: 6, distrito: 'Santa Ana', municipio: 'Santa Ana Centro', departamento: 'Santa Ana' },
 ];
+
+/** CAT-014 unidades de medida. Solo dos de prueba; confirmar los códigos con el catálogo oficial V2.0.
+ *  99 "Otra" es la que la Normativa obliga para servicios. */
+export const UNIDADES_PRUEBA = [
+  { codUnidadMedida: 59, nombre: 'Unidad' },
+  { codUnidadMedida: 99, nombre: 'Otra' },
+];

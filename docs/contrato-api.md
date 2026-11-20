@@ -296,11 +296,114 @@ Todas las columnas de `tb_empleados` en camelCase, más:
 
 `{ "fechaBaja": "2026-12-20" }` → 200 con la ficha. Pone `fecha_baja` y `activo = false`, y borra su horario (deja de aparecer en la agenda). No se borra nada más: ventas y comisiones quedan. 400 si `fechaBaja` es antes de `fechaIngreso` o después de hoy (no se programan bajas a futuro).
 
+## Inventario (`tb_productos`, `tb_lotes`, `tb_movimientos_inventario`, `tb_marcas`, `tb_categorias`)
+
+Existencia y costo no se guardan en `tb_productos`: salen de los lotes (PEPS). La API los calcula en cada respuesta.
+
+### `GET /api/productos?buscar=&filtro=todos&idCategoria=&pagina=0&tamano=50`
+
+- `buscar` (opcional): en `nombre_producto` (sin importar tildes ni mayúsculas) y en `codigo`.
+- `filtro`: `todos` (activos) · `bajo-minimo` (activos con existencia < `stock_minimo`; incluye los agotados) · `agotados` (activos con existencia 0) · `inactivos`.
+- `idCategoria` (opcional). Orden: nombre. Paginación como en Reglas generales.
+
+200:
+
+```json
+{
+  "contenido": [
+    { "idProducto": 1, "codigo": "7410000000123", "nombreProducto": "Shampoo hidratante 400 ml", "nombreCategoria": "Cabello",
+      "existencia": 2, "stockMinimo": 6, "costoPeps": 6.50, "precioVenta": 13.00, "valorCosto": 13.30, "activo": true }
+  ],
+  "totalElementos": 14,
+  "conteos": { "todos": 14, "bajo-minimo": 3, "agotados": 1, "inactivos": 1 },
+  "valorTotal": 667.50,
+  "comisionProducto": 2.00,
+  "ivaPct": 13
+}
+```
+
+- `existencia`: suma de `cantidad_disponible` de sus lotes.
+- `costoPeps`: `costo_unitario` del lote que sale primero (el más antiguo con existencia). Si está agotado, el de la última compra; `null` si nunca se compró. Costo **sin IVA**, 2 decimales al mostrarlo (en la base son 4).
+- `valorCosto`: Σ `cantidad_disponible × costo_unitario` de sus lotes.
+- `conteos` respeta `buscar` e `idCategoria` pero no `filtro`. `valorTotal`: valor al costo de todo el inventario (sin filtros).
+- `comisionProducto` (`COMISION_PRODUCTO`) e `ivaPct` (`IVA_PCT`) de `tb_parametros`: el formulario propone la comisión y muestra el precio sin IVA.
+
+### `GET /api/productos/{id}`
+
+Todas las columnas de `tb_productos` en camelCase, más lo calculado para el detalle:
+
+```json
+{
+  "idProducto": 1, "codigo": "7410000000123", "nombreProducto": "Shampoo hidratante 400 ml", "descripcion": "Para cabello seco o maltratado.",
+  "idMarca": 1, "idCategoria": 1, "codUnidadMedida": 59, "precioVenta": 13.00, "comisionFija": 2.00, "stockMinimo": 6, "activo": true,
+  "nombreMarca": "Aurora Pro", "nombreCategoria": "Cabello",
+  "existencia": 2, "costoPeps": 6.50, "ultimoCosto": 6.80, "vendidos30d": 15,
+  "lotes": [
+    { "idLote": 1, "fechaIngreso": "2026-09-18T10:00:00-06:00", "costoUnitario": 6.50, "cantidadInicial": 12, "cantidadDisponible": 1, "numeroCompra": "C-0142" },
+    { "idLote": 2, "fechaIngreso": "2026-10-21T10:00:00-06:00", "costoUnitario": 6.80, "cantidadInicial": 12, "cantidadDisponible": 1, "numeroCompra": "C-0157" }
+  ],
+  "ultimosMovimientos": [
+    { "fechaHora": "2026-12-12T15:20:00-06:00", "tipo": "SALIDA_VENTA", "cantidad": -1, "referencia": "DTE-01-…0412", "motivo": null },
+    { "fechaHora": "2026-12-05T09:10:00-06:00", "tipo": "SALIDA_AJUSTE", "cantidad": -1, "referencia": null, "motivo": "Producto dañado: frasco roto" }
+  ]
+}
+```
+
+- `lotes`: solo los que tienen existencia, en orden PEPS (`fecha_ingreso`, `id_lote`). `numeroCompra` es `null` si el lote nació de un ajuste.
+- `ultimoCosto`: costo del lote más nuevo, tenga o no existencia (`null` si nunca se compró). Es el costo de un ajuste de entrada.
+- `vendidos30d`: unidades vendidas (ventas pagadas, menos devoluciones) en los últimos 30 días. El frontend calcula "alcanza para unos N días".
+- `ultimosMovimientos`: los 5 más recientes del kardex. `tipo` es el de `tb_movimientos_inventario`; `referencia` es el número de compra o de DTE.
+
+### `POST /api/productos` y `PUT /api/productos/{id}`
+
+```json
+{ "nombreProducto": "Shampoo matizador 400 ml", "codigo": "7410000000451", "descripcion": null, "idMarca": 1, "idCategoria": 1,
+  "codUnidadMedida": 59, "precioVenta": 14.00, "comisionFija": 2.00, "stockMinimo": 6, "activo": true }
+```
+
+| Campo | Regla |
+|---|---|
+| `nombreProducto` | obligatorio, hasta 100 |
+| `codigo` | obligatorio, hasta 25, letras, números y guiones; **único** |
+| `idMarca`, `idCategoria`, `codUnidadMedida` | obligatorios; que existan |
+| `precioVenta` | obligatorio, con IVA, ≥ 0, 2 decimales |
+| `comisionFija` | obligatoria, ≥ 0, 2 decimales, no mayor que el precio sin IVA |
+| `stockMinimo` | entero ≥ 0 (0 = nunca avisa) |
+
+- 201 / 200 con el mismo objeto de `GET /api/productos/{id}`. Un producto nuevo empieza sin lotes: existencia 0.
+- 409 si el código ya existe: `{ "mensaje": "Ese código ya es de “Shampoo hidratante 400 ml”.", "codigo": "PRODUCTO_DUPLICADO", "campos": { "codigo": "Ya hay un producto con este código." }, "idProductoExistente": 1 }`. El frontend ofrece ir a ese producto.
+- Los productos no se borran (tienen kardex): `activo = false` los saca del punto de venta.
+- Cambiar el precio no toca ventas pasadas. Va a la bitácora.
+
+### `POST /api/productos/{id}/ajustes`
+
+```json
+{ "tipo": "DANADO", "cantidad": 1, "motivo": "Frasco roto al acomodar el estante." }
+```
+
+| `tipo` | `cantidad` | Kardex |
+|---|---|---|
+| `DANADO` (dañado o vencido) | cuántos salen (1 a la existencia) | `SALIDA_AJUSTE`, por PEPS |
+| `USO_SALON` (se usó en un servicio) | cuántos salen | `USO_SALON`, por PEPS |
+| `CONTEO` (conteo físico) | **cuántos hay** en el estante | si hay menos: `SALIDA_AJUSTE` por PEPS; si hay más: `ENTRADA_AJUSTE` con un lote nuevo al `ultimoCosto` |
+
+- `motivo`: obligatorio, hasta 150. Va a `tb_movimientos_inventario.motivo` y a la bitácora con el usuario del token.
+- La salida toca los lotes en orden PEPS: una fila del kardex por lote (bloqueados con `SELECT … FOR UPDATE`).
+- 200 con el producto actualizado (igual que `GET /api/productos/{id}`).
+- 409 `STOCK_INSUFICIENTE` si se pide sacar más de lo que hay. 400 con `campos.cantidad` si el conteo es igual a la existencia, o si es mayor y el producto nunca se compró (no hay costo para la entrada).
+
+### `GET /api/categorias` · `GET /api/marcas` · `POST /api/marcas`
+
+- `GET /api/categorias` → `[{ "idCategoria": 1, "nombreCategoria": "Cabello" }]`
+- `GET /api/marcas` → `[{ "idMarca": 1, "nombreMarca": "Aurora Pro" }]`, por nombre.
+- `POST /api/marcas` `{ "nombreMarca": "Aurora Pro" }` → 201 `{ "idMarca": 5, "nombreMarca": "Aurora Pro" }`. Se agrega desde el formulario de producto. 409 con `campos.nombreMarca` si ya existe (sin importar mayúsculas ni tildes).
+
 ## Catálogos de Hacienda
 
 - `GET /api/catalogos/actividades` → `[{ "codActividad": "96020", "descripcion": "Peluquería y otros tratamientos de belleza" }]` (CAT-019 completo).
 - `GET /api/catalogos/distritos` → `[{ "idDistrito": 1, "distrito": "San Salvador", "municipio": "San Salvador Centro", "departamento": "San Salvador" }]` (CAT-008 unido a municipios y departamentos).
+- `GET /api/catalogos/unidades-medida` → `[{ "codUnidadMedida": 59, "nombre": "Unidad" }]` (CAT-014). Para productos; los servicios usan siempre 99.
 
 ## Siguientes endpoints
 
-Se agregan aquí a medida que se programan las pantallas (inventario, agenda…). Para cada uno: método, ruta, cuerpo, respuesta y errores.
+Se agregan aquí a medida que se programan las pantallas (compras, agenda…). Para cada uno: método, ruta, cuerpo, respuesta y errores.
