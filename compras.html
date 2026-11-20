@@ -22,7 +22,7 @@
 
       <!-- Compras y Proveedores: lista a la izquierda, detalle en el panel -->
       <main id="vista-listas" class="flex-1 xl:grid xl:grid-cols-[minmax(0,1fr)_420px]">
-        <section class="flex min-w-0 flex-col gap-3 p-4 sm:px-8 sm:py-6" aria-label="Compras y proveedores">
+        <section class="@container flex min-w-0 flex-col gap-3 p-4 sm:px-8 sm:py-6" aria-label="Compras y proveedores">
           <div class="flex flex-wrap items-center gap-3">
             <div id="vistas" class="segmento" role="group" aria-label="Ver">
               <button type="button" data-vista="compras" aria-pressed="true">Compras</button>
@@ -51,7 +51,7 @@
             </div>
             <div class="tarjeta overflow-hidden rounded-grande">
               <div class="fila-co h-9 border-b border-borde-default bg-fondo-sutil text-13 font-semibold text-texto-secundario" aria-hidden="true">
-                <span>Compra</span><span>Proveedor</span><span class="max-md:hidden">Productos</span><span class="text-right">Total</span>
+                <span>Compra</span><span>Proveedor</span><span class="@max-lg:hidden">Productos</span><span class="text-right">Total</span>
               </div>
               <div id="lista-compras"></div>
               <div id="compras-estado" class="hidden px-4 py-10 text-center text-texto-secundario"></div>
@@ -75,7 +75,7 @@
             </div>
             <div class="tarjeta overflow-hidden rounded-grande">
               <div class="fila-pr h-9 border-b border-borde-default bg-fondo-sutil text-13 font-semibold text-texto-secundario" aria-hidden="true">
-                <span>Proveedor</span><span class="max-md:hidden">Contacto</span><span class="max-sm:hidden">Crédito</span><span class="text-right">Última compra</span>
+                <span>Proveedor</span><span class="@max-2xl:hidden">Contacto</span><span class="@max-md:hidden">Crédito</span><span class="text-right">Última compra</span>
               </div>
               <div id="lista-proveedores"></div>
               <div id="proveedores-estado" class="hidden px-4 py-10 text-center text-texto-secundario"></div>

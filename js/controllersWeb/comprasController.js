@@ -121,7 +121,7 @@ function htmlFilaCompra(c) {
   return `<button type="button" data-id="${c.idCompra}" class="fila-co ${CLASE_FILA}">
     <span><b class="block font-semibold">${escapar(c.numeroCompra)}</b><small class="text-13 text-texto-secundario">${fechaCorta(c.fechaCompra)}</small></span>
     <span class="min-w-0"><b class="block truncate font-semibold">${escapar(c.nombreProveedor)}</b><small class="text-13 text-texto-secundario">${escapar(documentoCorto(c.tipoDocumentoProveedor, c.numeroDocumentoProveedor))}</small></span>
-    <span class="max-md:hidden"><b class="block font-normal">${plural(c.productos, 'producto', 'productos')}</b><small class="text-13 text-texto-secundario">${numero(c.unidades)} u</small></span>
+    <span class="@max-lg:hidden"><b class="block font-normal">${plural(c.productos, 'producto', 'productos')}</b><small class="text-13 text-texto-secundario">${numero(c.unidades)} u</small></span>
     <span class="text-right font-semibold">${dinero(c.total)}</span>
   </button>`;
 }
@@ -243,8 +243,8 @@ const sinAcentos = (t) => String(t ?? '').normalize('NFD').replace(/[\u0300-\u03
 function htmlFilaProveedor(p) {
   return `<button type="button" data-id="${p.idProveedor}" class="fila-pr ${CLASE_FILA} ${p.activo ? '' : 'text-texto-secundario'}">
     <span class="min-w-0"><b class="block truncate font-semibold">${escapar(p.nombreComercial)}</b><small class="block truncate text-13 text-texto-secundario">${escapar(p.razonSocial)}</small></span>
-    <span class="min-w-0 max-md:hidden"><b class="block truncate font-normal">${escapar(p.contactoNombre ?? '—')}</b><small class="text-13 text-texto-secundario">${escapar(p.telefono ?? '')}</small></span>
-    <span class="max-sm:hidden">${credito(p.diasCredito)}</span>
+    <span class="min-w-0 @max-2xl:hidden"><b class="block truncate font-normal">${escapar(p.contactoNombre ?? '—')}</b><small class="text-13 text-texto-secundario">${escapar(p.telefono ?? '')}</small></span>
+    <span class="@max-md:hidden">${credito(p.diasCredito)}</span>
     <span class="text-right">${p.ultimaCompra
       ? `<b class="block font-normal">${fechaCorta(p.ultimaCompra.fechaCompra)}</b><small class="text-13 text-texto-secundario">${dinero(p.ultimaCompra.total)}</small>`
       : '<small class="text-13 text-texto-secundario">Sin compras</small>'}</span>

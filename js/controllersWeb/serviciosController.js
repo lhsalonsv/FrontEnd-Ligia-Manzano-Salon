@@ -71,10 +71,10 @@ function htmlFila(s) {
   return `<button type="button" data-id="${s.idServicio}" ${actual ? 'aria-current="true"' : ''}
     class="fila-s min-h-12 w-full cursor-pointer border-b border-neutro-100 py-1.5 text-left text-15 tabular-nums hover:bg-fondo-sutil aria-[current=true]:bg-fondo-sutil aria-[current=true]:shadow-[inset_3px_0_0_var(--color-neutro-900)] ${s.activo ? '' : 'text-texto-secundario'}">
     <span class="min-w-0"><b class="block truncate font-semibold">${escapar(s.nombreServicio)}</b>${s.activo ? '' : '<small class="text-13">Inactivo</small>'}<small class="block text-13 text-texto-secundario md:hidden">${duracion(s.duracionMin)}</small></span>
-    <span class="max-md:hidden">${duracion(s.duracionMin)}</span>
+    <span class="@max-2xl:hidden">${duracion(s.duracionMin)}</span>
     <span class="text-right">${precioTexto(s)}</span>
-    <span class="text-right text-texto-secundario max-md:hidden">${dinero(comision(s.precio))}</span>
-    <span class="flex justify-end -space-x-1.5 max-md:hidden" title="${escapar(quienes.map((e) => e.nombreCompleto).join(', '))}">
+    <span class="text-right text-texto-secundario @max-2xl:hidden">${dinero(comision(s.precio))}</span>
+    <span class="flex justify-end -space-x-1.5 @max-2xl:hidden" title="${escapar(quienes.map((e) => e.nombreCompleto).join(', '))}">
       ${quienes.slice(0, 4).map((e) => `<span class="ini size-7 border-2 border-fondo-superficie text-[11px]" aria-hidden="true">${escapar(iniciales(e.nombreCompleto))}</span>`).join('')}
       <span class="sr-only">Lo hacen: ${escapar(quienes.map((e) => e.nombreCompleto).join(', ') || 'nadie')}</span>
     </span>

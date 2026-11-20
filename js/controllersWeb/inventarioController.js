@@ -71,9 +71,9 @@ function htmlFila(r) {
     class="fila-p min-h-14 w-full cursor-pointer border-b border-neutro-100 py-2 text-left text-15 tabular-nums hover:bg-fondo-sutil aria-[current=true]:bg-fondo-sutil aria-[current=true]:shadow-[inset_3px_0_0_var(--color-neutro-900)] ${r.activo ? '' : 'text-texto-secundario'}">
     <span class="min-w-0"><b class="block truncate font-semibold">${escapar(r.nombreProducto)}</b><small class="text-13 text-texto-secundario">${escapar(r.nombreCategoria)}</small></span>
     <span class="flex flex-col items-start gap-0.5"><span><b class="font-semibold">${numero(r.existencia)}</b> <small class="text-13 text-texto-secundario">mín. ${r.stockMinimo}</small></span>${insignia(r)}</span>
-    <span class="text-right text-texto-secundario max-md:hidden">${r.costoPeps === null ? '—' : dinero(r.costoPeps)}</span>
-    <span class="text-right max-sm:hidden">${dinero(r.precioVenta)}</span>
-    <span class="text-right max-md:hidden">${dinero(r.valorCosto)}</span>
+    <span class="text-right text-texto-secundario @max-2xl:hidden">${r.costoPeps === null ? '—' : dinero(r.costoPeps)}</span>
+    <span class="text-right @max-md:hidden">${dinero(r.precioVenta)}</span>
+    <span class="text-right @max-2xl:hidden">${dinero(r.valorCosto)}</span>
   </button>`;
 }
 

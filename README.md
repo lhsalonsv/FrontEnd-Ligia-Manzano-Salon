@@ -62,6 +62,7 @@ vercel.json                Cabeceras de seguridad al publicar en Vercel
 - Componentes repetidos (`btn`, `campo-caja`, `tarjeta`, `aviso`, `nav-enlace`) están en `css/input.css`.
 - Los campos llevan `data-campo="<columna>"` con el nombre de la columna del SQL, igual que en los mockups.
 - Los servicios nunca usan `fetch` directo: siempre `authFetch`.
+- Las columnas de las listas dependen del ancho de la **lista** (`@container` en la sección y `@md:`, `@2xl:`, `@max-2xl:hidden`…), no de la pantalla: en pantalla ancha el panel de la derecha le quita 420 px.
 - La referencia visual son los mockups de `../diseno/pantallas/`.
 
 ## Páginas nuevas

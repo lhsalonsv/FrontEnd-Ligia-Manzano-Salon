@@ -8,7 +8,7 @@ import { icono } from '../utils/icons.js';
 import { escapar, dinero, fechaCorta, mesAnio, MESES } from '../utils/formato.js';
 import { campo, entrada, mostrarErrores } from '../utils/formulario.js';
 import { crearPanel, htmlCabecera, htmlError, htmlExito } from '../utils/panel.js';
-import { DIAS, validarHorario, textoDia } from '../utils/horario.js';
+import { DIAS, validarHorario, textoDia, textoDia12, partirJornada } from '../utils/horario.js';
 import { listarEmpleados, obtenerEmpleado, guardarEmpleado, darDeBaja } from '../services/empleadosService.js';
 import { listarServicios, listarEspecialidades } from '../services/serviciosService.js';
 
@@ -73,9 +73,9 @@ function htmlFila(e) {
       <span class="ini" aria-hidden="true">${escapar(`${e.nombreEmpleado[0]}${e.apellido[0]}`.toUpperCase())}</span>
       <span class="min-w-0"><b class="block truncate font-semibold">${escapar(nombre(e))}</b><small class="block text-13 text-texto-secundario">${escapar(e.puesto)}</small></span>
     </span>
-    <span class="max-md:hidden ${e.rol ? '' : 'text-texto-secundario'}">${e.rol ? NOMBRE_ROL[e.rol] ?? e.rol : 'Sin usuario'}</span>
-    <span class="text-right max-sm:hidden ${Number(e.sueldoBaseMensual) > 0 ? '' : 'text-texto-secundario'}">${Number(e.sueldoBaseMensual) > 0 ? dinero(e.sueldoBaseMensual) : 'No aplica'}</span>
-    <span class="text-right max-md:hidden ${e.recibeComision && e.activo ? '' : 'text-texto-secundario'}">${e.recibeComision && e.activo ? dinero(e.comisionesQuincena) : 'No aplica'}</span>
+    <span class="@max-2xl:hidden ${e.rol ? '' : 'text-texto-secundario'}">${e.rol ? NOMBRE_ROL[e.rol] ?? e.rol : 'Sin usuario'}</span>
+    <span class="text-right @max-md:hidden ${Number(e.sueldoBaseMensual) > 0 ? '' : 'text-texto-secundario'}">${Number(e.sueldoBaseMensual) > 0 ? dinero(e.sueldoBaseMensual) : 'No aplica'}</span>
+    <span class="text-right @max-2xl:hidden ${e.recibeComision && e.activo ? '' : 'text-texto-secundario'}">${e.recibeComision && e.activo ? dinero(e.comisionesQuincena) : 'No aplica'}</span>
     <span class="text-right">${insignia}</span>
   </button>`;
 }
@@ -238,9 +238,11 @@ function htmlFilaHorario(dia, bloques) {
       ${cerrado ? '<p class="flex h-9 items-center text-texto-secundario">El salón cierra</p>' : `
       <div class="bloques flex flex-wrap items-center gap-x-2 gap-y-1 ${bloques.length ? '' : 'hidden'}">
         ${tiempo(`ini1-${dia}`, b1?.horaInicio, 'entrada')}<span>a</span>${tiempo(`fin1-${dia}`, b1?.horaFin, 'salida')}
-        <span class="bloque2 ${b2 ? 'contents' : 'hidden'}"><span class="text-texto-secundario">y</span>${tiempo(`ini2-${dia}`, b2?.horaInicio, 'regreso')}<span>a</span>${tiempo(`fin2-${dia}`, b2?.horaFin, 'salida de la tarde')}</span>
-        <button type="button" data-accion="bloque2" data-dia="${dia}" class="text-13 font-semibold underline underline-offset-2 ${b2 ? 'hidden' : ''}">+ tarde</button>
+        <span class="bloque2 ${b2 ? 'contents' : 'hidden'}"><span class="text-texto-secundario">y</span>${tiempo(`ini2-${dia}`, b2?.horaInicio, 'regreso del almuerzo')}<span>a</span>${tiempo(`fin2-${dia}`, b2?.horaFin, 'salida de la tarde')}
+          <button type="button" data-accion="quitar-tarde" data-dia="${dia}" class="cursor-pointer text-13 font-semibold text-texto-secundario underline underline-offset-2 hover:text-texto-principal" aria-label="${DIAS[dia - 1]}: quitar la tarde (jornada corrida)">× quitar tarde</button></span>
+        <button type="button" data-accion="bloque2" data-dia="${dia}" class="cursor-pointer text-13 font-semibold underline underline-offset-2 ${b2 ? 'hidden' : ''}" aria-label="${DIAS[dia - 1]}: agregar la tarde (sale a almorzar)">+ tarde</button>
       </div>
+      <p class="resumen-dia mt-1 text-13 text-texto-secundario ${bloques.length ? '' : 'hidden'}" aria-live="polite">${bloques.length ? textoDia12(bloques) : ''}</p>
       <p class="flex h-9 items-center text-texto-secundario libre ${bloques.length ? 'hidden' : ''}">Libre</p>`}
       <p class="campo-error hidden" id="error-horario-${dia}"></p>
     </div>
@@ -303,7 +305,7 @@ function mostrarFormulario(empleado = null) {
 
         <fieldset data-campo="horario">
           <legend class="panel-titulo mb-1 w-full">Horario</legend>
-          <p class="campo-ayuda mt-0 mb-2">La agenda solo le ofrece estas horas. Agregue la tarde si sale a almorzar.</p>
+          <p class="campo-ayuda mt-0 mb-2">La agenda solo le ofrece estas horas. Horas en formato de 24: la 1:00 de la tarde es 13:00. Si sale a almorzar, agregue la tarde.</p>
           <div class="text-sm">${[1, 2, 3, 4, 5, 6, 7].map((d) => htmlFilaHorario(d, e.horarios.filter((b) => b.diaSemana === d).sort((a, b) => a.horaInicio.localeCompare(b.horaInicio)))).join('')}</div>
         </fieldset>
       </div>
@@ -323,11 +325,39 @@ function mostrarFormulario(empleado = null) {
     $('sueldo-quincena').textContent = s > 0 ? `Se paga ${dinero(s / 2)} cada quincena.` : 'Se paga la mitad cada quincena.';
   };
   pintarQuincena();
+  const horaDia = (nombre, d) => form.elements[`${nombre}-${d}`].value;
+  /** Resumen en 12 h debajo del día y, si se pide (o ya había un error), su validación. */
+  const actualizarDia = (d, validar = false) => {
+    const fila = form.querySelector(`[data-dia="${d}"]`);
+    const trabaja = form.elements[`trabaja-${d}`].checked;
+    const bloques = [['ini1', 'fin1'], ['ini2', 'fin2']]
+      .map(([i, f]) => ({ diaSemana: d, horaInicio: horaDia(i, d), horaFin: horaDia(f, d) }))
+      .filter((b, n) => n === 0 || b.horaInicio || b.horaFin);
+    const completos = bloques.filter((b) => b.horaInicio && b.horaFin);
+    const resumen = fila.querySelector('.resumen-dia');
+    resumen.textContent = completos.length ? textoDia12(completos) : '';
+    resumen.classList.toggle('hidden', !trabaja || !completos.length);
+    const error = $(`error-horario-${d}`);
+    if (!validar && error.classList.contains('hidden')) return;
+    const mensaje = trabaja ? validarHorario(bloques, estado.horarioSalon)[d] : '';
+    error.textContent = mensaje ?? '';
+    error.classList.toggle('hidden', !mensaje);
+  };
+  const mostrarTarde = (fila, si) => {
+    fila.querySelector('.bloque2').classList.toggle('contents', si);
+    fila.querySelector('.bloque2').classList.toggle('hidden', !si);
+    fila.querySelector('[data-accion="bloque2"]').classList.toggle('hidden', si);
+  };
+
   form.addEventListener('input', (ev) => {
     estado.formularioSucio = true;
     if (ev.target.name === 'sueldoBaseMensual') pintarQuincena();
+    const hora = ev.target.name?.match(/^(?:ini|fin)[12]-(\d)$/);
+    if (hora) actualizarDia(Number(hora[1]));
   });
   form.addEventListener('change', (ev) => {
+    const hora = ev.target.name?.match(/^(?:ini|fin)[12]-(\d)$/);
+    if (hora) { actualizarDia(Number(hora[1]), true); return; } // al terminar de escribir la hora, se revisa ese día
     const m = ev.target.name?.match(/^trabaja-(\d)$/);
     if (!m) return;
     const fila = form.querySelector(`[data-dia="${m[1]}"]`);
@@ -339,14 +369,31 @@ function mostrarFormulario(empleado = null) {
       if (!ini.value) ini.value = s.horaAbre.slice(0, 5); // propone el horario del salón
       if (!fin.value) fin.value = s.horaCierra.slice(0, 5);
     }
+    actualizarDia(Number(m[1]), ev.target.checked);
   });
   form.addEventListener('click', (ev) => {
-    const boton = ev.target.closest('[data-accion="bloque2"]');
+    const boton = ev.target.closest('[data-accion="bloque2"], [data-accion="quitar-tarde"]');
     if (!boton) return;
-    const fila = form.querySelector(`[data-dia="${boton.dataset.dia}"]`);
-    fila.querySelector('.bloque2').classList.replace('hidden', 'contents');
-    boton.classList.add('hidden');
-    form.elements[`ini2-${boton.dataset.dia}`].focus();
+    const d = Number(boton.dataset.dia);
+    const fila = form.querySelector(`[data-dia="${d}"]`);
+    const el = (nombre) => form.elements[`${nombre}-${d}`];
+    estado.formularioSucio = true;
+    if (boton.dataset.accion === 'bloque2') {
+      // Parte el día con una hora de almuerzo: 8:00–16:00 → 8:00–12:00 y 13:00–16:00
+      const s = estado.horarioSalon.find((x) => x.diaSemana === d);
+      const partes = partirJornada(el('ini1').value, el('fin1').value, s.horaCierra);
+      if (partes) [[el('ini1').value, el('fin1').value], [el('ini2').value, el('fin2').value]] = partes;
+      mostrarTarde(fila, true);
+      el(partes ? 'fin1' : 'ini2').focus();
+    } else {
+      // Vuelve a jornada corrida: de la entrada de la mañana a la salida de la tarde
+      if (el('fin2').value > el('fin1').value) el('fin1').value = el('fin2').value;
+      el('ini2').value = '';
+      el('fin2').value = '';
+      mostrarTarde(fila, false);
+      fila.querySelector('[data-accion="bloque2"]').focus();
+    }
+    actualizarDia(d, true);
   });
   form.addEventListener('submit', (ev) => enviarFormulario(ev, empleado));
   $('f-nombreEmpleado').focus();

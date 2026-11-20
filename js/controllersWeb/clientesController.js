@@ -60,10 +60,10 @@ function htmlFila(c) {
         <span class="ini" aria-hidden="true">${escapar(iniciales(nombreCompleto(c)))}</span>
         <span class="min-w-0"><b class="block truncate font-semibold">${escapar(nombreCompleto(c))}${alergia}</b><small class="block text-13 text-texto-secundario">${escapar(c.telefono)}</small></span>
       </span>
-      <span class="max-md:hidden">${c.ultimaVisita ? fechaCorta(c.ultimaVisita) : '<span class="text-texto-secundario">Nunca</span>'}</span>
-      <span class="text-right max-md:hidden">${c.visitas12m}</span>
-      <span class="text-right max-md:hidden">${dinero(c.gastado12m)}</span>
-      <span class="text-sm max-sm:hidden">${cita}</span>
+      <span class="@max-2xl:hidden">${c.ultimaVisita ? fechaCorta(c.ultimaVisita) : '<span class="text-texto-secundario">Nunca</span>'}</span>
+      <span class="text-right @max-2xl:hidden">${c.visitas12m}</span>
+      <span class="text-right @max-2xl:hidden">${dinero(c.gastado12m)}</span>
+      <span class="text-sm @max-sm:hidden">${cita}</span>
     </button>
   </li>`;
 }

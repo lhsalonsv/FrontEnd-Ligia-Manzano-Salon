@@ -22,7 +22,7 @@
 
       <main class="flex-1 xl:grid xl:grid-cols-[1fr_380px]">
         <!-- Lista -->
-        <section class="flex min-w-0 flex-col gap-3 p-4 sm:px-8 sm:py-6" aria-label="Lista de clientes">
+        <section class="@container flex min-w-0 flex-col gap-3 p-4 sm:px-8 sm:py-6" aria-label="Lista de clientes">
           <div class="flex flex-wrap items-center gap-3">
             <p id="resumen" class="text-15 whitespace-nowrap text-texto-secundario tabular-nums" aria-live="polite"></p>
             <label class="campo-caja ml-auto h-10 min-h-0 w-full sm:w-72">
@@ -41,7 +41,7 @@
 
           <div class="tarjeta overflow-hidden rounded-grande">
             <div class="fila-cli h-9 border-b border-borde-default bg-fondo-sutil text-13 font-semibold text-texto-secundario" aria-hidden="true">
-              <span>Cliente</span><span class="max-md:hidden">Última visita</span><span class="text-right max-md:hidden">Visitas</span><span class="text-right max-md:hidden">Gastado</span><span class="max-sm:hidden">Próxima cita</span>
+              <span>Cliente</span><span class="@max-2xl:hidden">Última visita</span><span class="text-right @max-2xl:hidden">Visitas</span><span class="text-right @max-2xl:hidden">Gastado</span><span class="@max-sm:hidden">Próxima cita</span>
             </div>
             <ul id="lista" aria-label="Clientes"></ul>
             <div id="lista-estado" class="hidden px-4 py-10 text-center text-texto-secundario"></div>
