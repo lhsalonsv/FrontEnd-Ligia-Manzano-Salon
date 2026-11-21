@@ -31,6 +31,9 @@ const TRAZOS = {
   mas: '<path d="M5 12h14"/><path d="M12 5v14"/>',
   advertencia: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
   gota: '<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/>',
+  izquierda: '<path d="m15 18-6-6 6-6"/>',
+  derecha: '<path d="m9 18 6-6-6-6"/>',
+  descargar: '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
   abajo: '<path d="m6 9 6 6 6-6"/>',
   arriba: '<path d="m18 15-6-6-6 6"/>',
 };

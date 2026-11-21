@@ -164,6 +164,9 @@
   .secciones .filtro { @apply xl:rounded-chico xl:border-b-0 xl:px-3 xl:py-2 xl:text-left xl:text-15 xl:font-normal xl:hover:bg-neutro-200/60; }
   .secciones .filtro[aria-pressed="true"] { @apply xl:bg-fondo-superficie xl:font-semibold xl:shadow-sm; }
 
+  /* Bitácora: hora | quién | módulo | qué pasó (angosta: hora | qué pasó, con quién y módulo debajo) */
+  .fila-b { @apply grid grid-cols-[72px_minmax(0,1fr)] items-center gap-3 px-4 @2xl:grid-cols-[80px_168px_112px_minmax(0,1fr)]; }
+
   .fila-p { @apply grid grid-cols-[minmax(0,1fr)_120px] items-center gap-3 px-4 @md:grid-cols-[minmax(0,1fr)_120px_80px] @2xl:grid-cols-[minmax(0,1fr)_128px_88px_80px_88px]; }
 
   /* Opción tipo botón (radio o checkbox escondido dentro de un label) */

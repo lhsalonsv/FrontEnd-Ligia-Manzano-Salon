@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bitácora · Ligia Manzano Salón</title>
+  <link rel="icon" type="image/svg+xml" href="img/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<!-- Referencia visual: ../diseno/pantallas/bitacora.html -->
+<body data-pagina="bitacora" data-titulo="Bitácora">
+
+  <div class="lg:grid lg:min-h-dvh lg:grid-cols-[248px_1fr]">
+    <aside id="lateral" class="fixed inset-y-0 left-0 z-40 flex w-[248px] -translate-x-full flex-col gap-6 overflow-y-auto bg-lateral-fondo px-4 py-6 text-lateral-texto transition-transform lg:sticky lg:top-0 lg:h-dvh lg:translate-x-0"></aside>
+    <div id="fondo-menu" class="fixed inset-0 z-30 hidden bg-neutro-900/50 lg:hidden"></div>
+
+    <div class="flex min-w-0 flex-col">
+      <header id="barra" class="sticky top-0 z-20 flex h-16 items-center gap-4 border-b border-borde-default bg-fondo-superficie px-4 sm:px-8"></header>
+
+      <main class="flex-1 xl:grid xl:grid-cols-[minmax(0,1fr)_420px]">
+        <section class="@container flex min-w-0 flex-col gap-3 p-4 sm:px-8 sm:py-6" aria-label="Registros de la bitácora">
+          <div class="flex flex-wrap items-center gap-3">
+            <div class="flex items-center gap-1">
+              <button type="button" id="dia-anterior" class="btn btn-secundario size-9 p-0" aria-label="Día anterior"></button>
+              <button type="button" id="dia-siguiente" class="btn btn-secundario size-9 p-0" aria-label="Día siguiente"></button>
+              <button type="button" id="hoy" class="btn btn-secundario h-9 px-3 text-sm">Hoy</button>
+            </div>
+            <h2 id="titulo-dia" class="text-xl first-letter:uppercase"></h2>
+            <label class="campo-caja h-9 min-h-0 w-auto text-sm">
+              <span class="sr-only">Elegir día</span>
+              <input id="fecha" type="date" class="tabular-nums">
+            </label>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-3">
+            <label class="campo-caja h-9 min-h-0 w-full text-sm sm:w-auto">
+              <span class="text-texto-secundario">Persona:</span>
+              <select id="persona" class="font-semibold"><option value="">Todas</option></select>
+            </label>
+            <label class="campo-caja h-9 min-h-0 w-full text-sm sm:ml-auto sm:w-64">
+              <svg class="icono" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <span class="sr-only">Buscar en la bitácora</span>
+              <input id="buscar" type="search" placeholder="Factura, cliente o producto" autocomplete="off">
+            </label>
+            <button type="button" id="exportar" class="btn btn-secundario h-9 px-3 text-sm"></button>
+          </div>
+
+          <div id="filtros" class="filtros" role="group" aria-label="Filtrar por módulo"></div>
+
+          <div class="tarjeta overflow-hidden rounded-grande">
+            <div class="fila-b h-9 border-b border-borde-default bg-fondo-sutil text-13 font-semibold text-texto-secundario" aria-hidden="true">
+              <span>Hora</span><span class="@max-2xl:hidden">Quién</span><span class="@max-2xl:hidden">Módulo</span><span>Qué pasó</span>
+            </div>
+            <div id="lista"></div>
+            <div id="lista-estado" class="hidden px-4 py-10 text-center text-texto-secundario"></div>
+            <div id="cargar-mas" class="hidden border-t border-borde-default p-3 text-center">
+              <button type="button" class="btn btn-secundario">Cargar más</button>
+            </div>
+          </div>
+          <p class="px-1 text-13 text-texto-secundario">La bitácora no se edita ni se borra. Nadie, ni la administradora, puede cambiar un registro.</p>
+        </section>
+
+        <div id="fondo-panel" class="fixed inset-0 z-30 hidden bg-neutro-900/50 xl:hidden"></div>
+        <aside id="panel" class="fixed inset-y-0 right-0 z-40 hidden w-full flex-col overflow-y-auto border-l border-borde-default bg-fondo-superficie sm:w-[440px] xl:sticky xl:top-16 xl:z-auto xl:flex xl:h-[calc(100dvh-4rem)] xl:w-auto" aria-label="Detalle del registro"></aside>
+      </main>
+    </div>
+  </div>
+
+  <script type="module" src="js/controllersWeb/bitacoraController.js"></script>
+</body>
+</html>

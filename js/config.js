@@ -25,6 +25,7 @@ export const DATOS_PRUEBA = {
   inventario: true,
   compras: true,
   configuracion: true,
+  bitacora: true,
   catalogos: true,
 };
 

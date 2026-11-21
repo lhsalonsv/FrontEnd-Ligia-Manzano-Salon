@@ -36,6 +36,7 @@ servicios.html             Servicios: catálogo por especialidad, detalle y form
 empleados.html             Empleados: equipo, ficha, formulario con especialidades y horario, dar de baja
 inventario.html            Inventario: productos, lotes PEPS, últimos movimientos, ajuste de existencia y formulario
 compras.html               Compras: historial, registrar compra (un lote por producto) y proveedores
+bitacora.html              Bitácora: registros del día por módulo, persona o texto; qué cambió; exportar a CSV
 configuracion.html         Configuración (solo Administrador): negocio y Hacienda, reglas del salón, usuarios y la matriz de roles (borrador)
 css/input.css              Tema (tokens del diseño) y componentes → se compila a css/styles.css
 js/config.js               URL de la API, interruptores de datos de prueba, tiempos

@@ -635,6 +635,54 @@ Sin cuerpo → 200 `{ "contrasenaTemporal": "…" }`. Pone `debe_cambiar_contras
 
 `{ "activo": false }` → 200 con el usuario. Desactivar cierra sus sesiones (motivo `DESACTIVADO`) y ya no puede entrar; no se borra (su nombre queda en la bitácora, ventas y compras). 400 si es el propio usuario o el último administrador activo.
 
+## Bitácora (`tb_bitacora`)
+
+Solo lectura: no hay endpoints para crear, editar ni borrar. Cada registro lo escribe el backend en la misma transacción de la acción (venta, ajuste, cambio de configuración…), con el usuario del token, o `id_usuario` nulo si lo hizo el sistema (respuesta de Hacienda, contingencia…). `salon_app` no tiene `update` ni `delete` sobre la tabla.
+
+Quién la ve: por ahora **Administrador y Auditor** (borrador de la matriz de roles); 403 para los demás.
+
+### `GET /api/bitacora?fecha=2026-12-12&modulo=&idUsuario=&buscar=&pagina=0&tamano=100`
+
+- `fecha`: obligatoria, un día (hora de El Salvador). `modulo` (opcional): uno de la tabla de abajo. `idUsuario` (opcional): un usuario, o `sistema` para los registros sin usuario.
+- `buscar` (opcional): en `descripcion` y `entidad_id`, sin importar tildes ni mayúsculas ("0406", "Carmen", "C-0158").
+- Orden: el más reciente primero (`fecha_hora`, `id_bitacora`). Paginación como en Reglas generales (aquí `tamano` 100).
+
+```json
+{
+  "contenido": [
+    { "idBitacora": 9120, "fechaHora": "2026-12-12T13:15:00-06:00", "idUsuario": 1, "nombreUsuario": "Ligia Manzano",
+      "modulo": "ANULACIONES", "accion": "ANULAR", "entidad": "DTE", "entidadId": "DTE-01-M001P001-000000000000406",
+      "descripcion": "Anuló la factura DTE-01-…0406 de Lucía Pérez, $75.00" }
+  ],
+  "totalElementos": 10,
+  "conteos": { "todo": 10, "VENTAS": 2, "ANULACIONES": 1, "HACIENDA": 2, "CLIENTES": 1, "SEGURIDAD": 1, "SESION": 1, "CAJA": 1, "AGENDA": 1 },
+  "personas": [ { "idUsuario": 1, "nombreCompleto": "Ligia Manzano" } ]
+}
+```
+
+- `conteos`: por módulo **del día**, con `buscar` e `idUsuario` aplicados pero sin `modulo`; solo los módulos que tienen registros. `personas`: quienes tienen registros ese día (para el filtro). `nombreUsuario` es `null` si lo hizo el sistema.
+- `descripcion` la arma el backend al guardar, en pasado y con los datos que identifican (cliente, número, monto): es lo que se lee en la lista.
+
+| `modulo` | Ejemplos de `accion` |
+|---|---|
+| `SESION` | `ENTRAR`, `SALIR`, `CAMBIAR_CONTRASENA` |
+| `SEGURIDAD` | `CONTRASENA_INCORRECTA`, `CUENTA_BLOQUEADA` |
+| `VENTAS` · `ANULACIONES` · `HACIENDA` · `CAJA` | `COBRAR` · `ANULAR`, `NOTA_CREDITO` · `ACEPTADO`, `RECHAZADO`, `CONTINGENCIA` · `ABRIR`, `CERRAR` |
+| `AGENDA` · `CLIENTES` · `SERVICIOS` · `EMPLEADOS` | `CREAR`, `EDITAR`, `MOVER`, `CANCELAR`, `DAR_DE_BAJA` |
+| `INVENTARIO` · `COMPRAS` | `CREAR`, `EDITAR`, `AJUSTAR`, `REGISTRAR` |
+| `PLANILLA` · `CONFIGURACION` · `USUARIOS` | `CERRAR_QUINCENA`, `EDITAR`, `CREAR`, `RESTABLECER_CONTRASENA`, `DESACTIVAR` |
+
+### `GET /api/bitacora/{id}`
+
+El registro completo: lo de la lista más `datosAntes`, `datosDespues` (JSON de las columnas que cambiaron, en camelCase; `null` si la acción no cambia datos) y `equipo` ("Chrome en Windows", del `User-Agent`).
+
+```json
+{ "…": "…", "datosAntes": { "estado": "ACEPTADA" }, "datosDespues": { "estado": "ANULADA", "motivo": "La clienta no quedó conforme con el tono." }, "equipo": "Chrome en Windows" }
+```
+
+- Nunca se guardan contraseñas, tokens ni la llave del certificado en `datos_antes` / `datos_despues`.
+- Exportar el día: el frontend pide todas las páginas y arma el CSV (no hay endpoint aparte).
+
 ## Catálogos de Hacienda
 
 - `GET /api/catalogos/actividades` → `[{ "codActividad": "96020", "descripcion": "Peluquería y otros tratamientos de belleza" }]` (CAT-019 completo).
