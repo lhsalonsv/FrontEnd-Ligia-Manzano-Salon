@@ -1,7 +1,7 @@
 /**
  * bitacoraController.js — Ligia Manzano Salón
  * Pantalla Bitácora (solo lectura): los registros de un día, filtrados por módulo, persona o texto,
- * el detalle de cada uno (qué cambió) y exportar el día a CSV.
+ * el detalle de cada uno (qué cambió) y exportar el día a Excel.
  *
  * URL: bitacora.html?fecha=2026-12-12
  */
@@ -9,6 +9,7 @@ import { montarLayout } from '../utils/layout.js';
 import { icono } from '../utils/icons.js';
 import { escapar, dinero, numero, fechaIso, fechaHora, iniciales, MESES } from '../utils/formato.js';
 import { crearPanel, htmlCabecera, htmlError } from '../utils/panel.js';
+import { crearXlsx, TIPO_XLSX } from '../utils/xlsx.js';
 import { listarBitacora, obtenerRegistro, todoElDia } from '../services/bitacoraService.js';
 
 const sesion = montarLayout();
@@ -225,8 +226,7 @@ async function mostrarDetalle(idBitacora) {
 
 // --- Exportar ----------------------------------------------------------------
 
-const celdaCsv = (t) => `"${String(t ?? '').replace(/"/g, '""')}"`;
-
+/** Excel (.xlsx) y no CSV: un CSV se abre en una sola columna si Windows usa punto y coma como separador. */
 async function exportar(boton) {
   const texto = boton.innerHTML;
   boton.disabled = true;
@@ -235,11 +235,10 @@ async function exportar(boton) {
     const registros = await todoElDia({ fecha: estado.fecha, modulo: estado.modulo, idUsuario: estado.idUsuario, buscar: estado.buscar });
     const filas = [['Fecha y hora', 'Quién', 'Módulo', 'Acción', 'Registro', 'Qué pasó'],
       ...registros.map((r) => [`${estado.fecha} ${horaDe(r.fechaHora)}`, r.nombreUsuario ?? 'Sistema', nombreModulo(r.modulo), r.accion, r.entidadId, r.descripcion])];
-    // BOM: así Excel abre bien las tildes
-    const csv = `﻿${filas.map((f) => f.map(celdaCsv).join(',')).join('\r\n')}`;
+    const archivo = crearXlsx(filas, { hoja: `Bitácora ${estado.fecha}`, anchos: [20, 18, 14, 24, 34, 90] });
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    a.download = `bitacora-${estado.fecha}${estado.modulo ? `-${estado.modulo.toLowerCase()}` : ''}.csv`;
+    a.href = URL.createObjectURL(new Blob([archivo], { type: TIPO_XLSX }));
+    a.download = `bitacora-${estado.fecha}${estado.modulo ? `-${estado.modulo.toLowerCase()}` : ''}.xlsx`;
     a.click();
     URL.revokeObjectURL(a.href);
   } catch (error) {

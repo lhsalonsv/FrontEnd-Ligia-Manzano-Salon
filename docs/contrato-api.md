@@ -681,7 +681,7 @@ El registro completo: lo de la lista más `datosAntes`, `datosDespues` (JSON de 
 ```
 
 - Nunca se guardan contraseñas, tokens ni la llave del certificado en `datos_antes` / `datos_despues`.
-- Exportar el día: el frontend pide todas las páginas y arma el CSV (no hay endpoint aparte).
+- Exportar el día: el frontend pide todas las páginas y arma el Excel (.xlsx) él mismo (`js/utils/xlsx.js`); no hay endpoint aparte.
 
 ## Catálogos de Hacienda
 
