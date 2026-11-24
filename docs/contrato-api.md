@@ -456,7 +456,7 @@ Todas las columnas en camelCase, más:
 
 ## Compras (`tb_compras`, `tb_detalle_compras`, `tb_lotes`)
 
-Cada línea de una compra crea un lote (PEPS) y una entrada en el kardex (`ENTRADA_COMPRA`). Las compras no se editan: si algo llegó mal, se corrige con un ajuste en Inventario.
+Una línea es un **producto** (crea un lote PEPS y una entrada en el kardex `ENTRADA_COMPRA`) o un **gasto** del local sin producto (alquiler, luz, agua: no toca el inventario). Las compras no se editan: si algo llegó mal, se corrige con un ajuste en Inventario o con la nota de crédito del proveedor. Desde la migración 1.3 llevan los datos del libro de compras de IVA (ver "Libros de IVA").
 
 ### `GET /api/compras?buscar=&filtro=todas&idProveedor=&pagina=0&tamano=50`
 
@@ -468,7 +468,7 @@ Cada línea de una compra crea un lote (PEPS) y una entrada en el kardex (`ENTRA
   "contenido": [
     { "idCompra": 157, "numeroCompra": "C-0157", "fechaCompra": "2026-10-21", "idProveedor": 1, "nombreProveedor": "Distribuidora Aurora",
       "tipoDocumentoProveedor": "CCF", "numeroDocumentoProveedor": "DTE-03-M001P001-000000000002291",
-      "productos": 3, "unidades": 30, "total": 248.83, "estado": "REGISTRADA" }
+      "productos": 3, "unidades": 30, "gastos": 0, "primerGasto": null, "total": 248.83, "estado": "REGISTRADA" }
   ],
   "totalElementos": 24,
   "conteos": { "todas": 24, "este-mes": 1 },
@@ -476,7 +476,8 @@ Cada línea de una compra crea un lote (PEPS) y una entrada en el kardex (`ENTRA
 }
 ```
 
-- `conteos` respeta `buscar` e `idProveedor`. `mes`: las compras del mes actual, sin filtros (sin anuladas).
+- `conteos` respeta `buscar` e `idProveedor`. `mes`: las compras del mes actual, sin filtros (sin anuladas); **una nota de crédito resta** del total.
+- `productos` y `unidades` cuentan solo las líneas de producto; `gastos` las líneas sin producto y `primerGasto` es la descripción de la primera (la lista la muestra cuando no hay productos).
 
 ### `GET /api/compras/{id}`
 
@@ -484,50 +485,109 @@ Cada línea de una compra crea un lote (PEPS) y una entrada en el kardex (`ENTRA
 {
   "idCompra": 157, "numeroCompra": "C-0157", "idProveedor": 1, "nombreProveedor": "Distribuidora Aurora",
   "fechaCompra": "2026-10-21", "tipoDocumentoProveedor": "CCF", "numeroDocumentoProveedor": "DTE-03-M001P001-000000000002291",
-  "subtotalSinIva": 220.20, "iva": 28.63, "total": 248.83, "fechaVencimientoPago": "2026-11-20", "estado": "REGISTRADA",
+  "claseDocumento": 4, "codigoGeneracionProveedor": "0A1B2C3D-0000-4000-8000-000000000157",
+  "idCompraRelacionada": null, "numeroCompraRelacionada": null, "periodoIva": "2026-10-01",
+  "subtotalSinIva": 220.20, "comprasExentas": 0, "iva": 28.63, "ivaPercibido": 0, "total": 248.83,
+  "tipoOperacionRenta": 1, "clasificacionRenta": 1, "sectorRenta": 4, "tipoCostoGasto": 5,
+  "fechaVencimientoPago": "2026-11-20", "estado": "REGISTRADA",
   "nombreUsuario": "Ligia Manzano", "creadoEn": "2026-10-21T10:42:00-06:00",
   "detalle": [
-    { "idProducto": 1, "nombreProducto": "Shampoo hidratante 400 ml", "cantidad": 12, "costoUnitario": 6.80, "subtotal": 81.60, "cantidadDisponible": 1 }
+    { "idProducto": 1, "nombreProducto": "Shampoo hidratante 400 ml", "cantidad": 12, "costoUnitario": 6.80, "subtotal": 81.60, "cantidadDisponible": 1 },
+    { "idProducto": null, "descripcion": "Bolsas para clientas", "cantidad": 1, "costoUnitario": 12.00, "subtotal": 12.00 }
   ]
 }
 ```
 
-- `cantidadDisponible`: lo que queda del lote que creó esa línea ("quedan 1 de 12").
+- `cantidadDisponible`: lo que queda del lote que creó esa línea ("quedan 1 de 12"). Una línea de gasto trae `descripcion` y no tiene lote.
+- `numeroCompraRelacionada`: en una NC o ND, el número de la compra que corrige (el panel lo muestra como enlace).
 
 ### `POST /api/compras`
 
 ```json
 {
   "idProveedor": 1, "fechaCompra": "2026-12-12", "tipoDocumentoProveedor": "CCF", "numeroDocumentoProveedor": "DTE-03-M001P001-000000000003105",
+  "claseDocumento": 4, "codigoGeneracionProveedor": "5E1C9B2A-7D4F-4A3B-9C2E-1F0A6B8D3E21", "idCompraRelacionada": null,
+  "periodoIva": "2026-12-01", "comprasExentas": 0, "percepcion": false,
+  "tipoOperacionRenta": 1, "clasificacionRenta": 1, "sectorRenta": 4, "tipoCostoGasto": 5,
   "detalle": [
     { "idProducto": 1, "cantidad": 12, "costoUnitario": 7.00 },
-    { "idProducto": 10, "cantidad": 6, "costoUnitario": 4.50 }
+    { "descripcion": "Bolsas para clientas", "cantidad": 1, "costoUnitario": 12.00 }
   ]
 }
 ```
 
-| Campo | Regla |
-|---|---|
-| `idProveedor` | obligatorio, activo |
-| `fechaCompra` | obligatoria, no en el futuro |
-| `tipoDocumentoProveedor` | `CCF` · `FACTURA` · `OTRO` |
-| `numeroDocumentoProveedor` | obligatorio con `CCF` y `FACTURA` (número de control o código de generación del DTE), hasta 40 |
-| `detalle` | al menos 1 línea; un producto no se repite; producto activo |
-| `cantidad` | entero de 1 a 9999 |
-| `costoUnitario` | sin IVA, ≥ 0, hasta 4 decimales (en una `FACTURA` u `OTRO`, el costo que se pagó) |
+| Campo | Columna | Regla |
+|---|---|---|
+| `idProveedor` | `id_proveedor` | obligatorio, activo |
+| `fechaCompra` | `fecha_compra` | obligatoria, no en el futuro. Es la fecha del documento del proveedor |
+| `tipoDocumentoProveedor` | `tipo_documento_proveedor` | `CCF` · `FACTURA` · `NC` · `ND` · `OTRO` |
+| `numeroDocumentoProveedor` | `numero_documento_proveedor` | número de control del DTE (o número impreso); obligatorio salvo en `OTRO`; hasta 40 |
+| `claseDocumento` | `clase_documento` | `4` DTE (normal) · `1` impreso |
+| `codigoGeneracionProveedor` | `codigo_generacion_proveedor` | UUID de 36 caracteres; **obligatorio en `CCF`, `NC` y `ND` electrónicos** (lo pide el anexo de compras). Único entre las compras no anuladas |
+| `idCompraRelacionada` | `id_compra_relacionada` | obligatorio en `NC` y `ND` (el CCF que corrigen); nulo en los demás |
+| `periodoIva` | `periodo_iva` | primer día del mes en que se declara el crédito fiscal: el de `fechaCompra` o hasta 3 meses después (art. 63 Ley de IVA). Sin IVA aparte, el mes de `fechaCompra` |
+| `comprasExentas` | `compras_exentas` | exento o no sujeto, ≥ 0, 2 decimales; normalmente 0 |
+| `percepcion` | → `iva_percibido` | `true` si el proveedor (gran contribuyente) cobró la percepción de 1 % |
+| `tipoOperacionRenta` · `clasificacionRenta` · `sectorRenta` · `tipoCostoGasto` | columnas `*_renta` y `tipo_costo_gasto` | códigos del anexo (MODELO_DATOS.md → "Códigos de renta"). La pantalla propone: productos = `1/1/4/5`; gastos = `1/2/4/2`; una nota, los de la compra que corrige |
+| `detalle` | | al menos 1 línea. Producto: `idProducto` activo, no se repite. Gasto: `descripcion` (hasta 200) sin `idProducto`. **Una `NC` o `ND` solo lleva líneas sin producto** |
+| `cantidad` | | entero de 1 a 9999 (un gasto lleva 1) |
+| `costoUnitario` | | sin IVA, ≥ 0, hasta 4 decimales (en una `FACTURA` u `OTRO`, el costo que se pagó) |
 
 Lo calcula la API (igual que `totalesCompra` en `js/utils/calculos.js`):
 
-- `subtotal` de cada línea = `cantidad × costoUnitario` a 2 decimales; `subtotalSinIva` = suma de las líneas.
-- `iva` = `subtotalSinIva × IVA_PCT` a 2 decimales, **solo con `CCF`** (crédito fiscal); con `FACTURA` u `OTRO` es 0.
-- `total` = `subtotalSinIva + iva`. `fechaVencimientoPago` = `fechaCompra + diasCredito` del proveedor (`null` si es de contado). `numeroCompra` = el siguiente (`C-0163`).
-- Cada línea → un `tb_lotes` con `fecha_ingreso = now()` (se vende después de los lotes que ya hay) y su `tb_movimientos_inventario` `ENTRADA_COMPRA`. Todo en una transacción, con la bitácora.
+- `subtotal` de cada línea = `cantidad × costoUnitario` a 2 decimales; `subtotalSinIva` (compras gravadas) = suma de las líneas.
+- `iva` = `subtotalSinIva × IVA_PCT` a 2 decimales, **solo con `CCF`, `NC` y `ND`** (crédito fiscal); con `FACTURA` u `OTRO` es 0.
+- `ivaPercibido` = `subtotalSinIva × 1 %` si `percepcion`, solo con IVA aparte.
+- `total` = `subtotalSinIva + comprasExentas + iva + ivaPercibido` (un check de la base lo exige). `fechaVencimientoPago` = `fechaCompra + diasCredito` del proveedor (`null` si es de contado). `numeroCompra` = el siguiente (`C-0163`).
+- Cada línea **de producto** → un `tb_lotes` con `fecha_ingreso = now()` (se vende después de los lotes que ya hay) y su `tb_movimientos_inventario` `ENTRADA_COMPRA`. Las de gasto no tocan el inventario. Todo en una transacción, con la bitácora.
 
 Respuestas:
 
 - 201 con el mismo objeto de `GET /api/compras/{id}`.
-- 400 con `campos` (`idProveedor`, `fechaCompra`, `numeroDocumentoProveedor`, `detalle`). Un error de una línea: `campos.detalle` con el texto ("La línea 2: la cantidad tiene que ser mayor que 0.").
-- 409 `COMPRA_DUPLICADA` si ese proveedor ya tiene una compra registrada con ese `numeroDocumentoProveedor` (se registró dos veces el mismo documento): `campos.numeroDocumentoProveedor`, e `idCompraExistente`.
+- 400 con `campos` (`idProveedor`, `fechaCompra`, `numeroDocumentoProveedor`, `codigoGeneracionProveedor`, `idCompraRelacionada`, `periodoIva`, `comprasExentas`, `detalle`). Un error de una línea: `campos.detalle` con el texto ("La línea 2: la cantidad tiene que ser mayor que 0.").
+- 409 `COMPRA_DUPLICADA` si ya hay una compra no anulada con ese `numeroDocumentoProveedor` del mismo proveedor o con ese `codigoGeneracionProveedor`: `campos.numeroDocumentoProveedor`, e `idCompraExistente`.
+
+## Libros de IVA (vistas `v_anexo_*`, migración 1.3)
+
+Solo lectura, para administradora, contador y auditor (403 a recepción). Fuente: *Manual de usuario para carga de archivo de los anexos de la declaración del IVA* (Hacienda). Las reglas están en `modelo/MODELO_DATOS.md` → "Libros de IVA y anexos del F-07".
+
+### `GET /api/libros-iva?periodo=2026-11`
+
+Cada lista son las filas de su vista, con las columnas en camelCase y en el orden de `correlativo`:
+
+| Lista | Vista | Filtro |
+|---|---|---|
+| `ventasContribuyentes` | `v_anexo_ventas_contribuyentes` | `periodo = '2026-11-01'` |
+| `consumidorFinal` | `v_anexo_ventas_consumidor_final` | igual |
+| `compras` | `v_anexo_compras` | igual (`periodo` es `periodo_iva`) |
+| `anulados` | `v_anexo_anulados` | igual (mes de la invalidación) |
+
+```json
+{
+  "periodo": "2026-11",
+  "ventasContribuyentes": [
+    { "correlativo": 1, "idDte": 529, "fecha": "2026-11-05", "claseDocumento": 4, "tipoDocumento": "03",
+      "numeroResolucion": "DTE03M001P001000000000000529", "serie": "<sello de 40>", "numeroDocumento": "A1B2C3D4…",
+      "nitNrc": "00000000000081", "dui": "", "nombre": "Eventos Lumière, S.A. de C.V.",
+      "ventasExentas": 0, "ventasNoSujetas": 0, "ventasGravadas": 200.00, "debitoFiscal": 26.00, "totalVentas": 226.00,
+      "tipoOperacionRenta": 1, "tipoIngresoRenta": 2, "ivaRetenido": 0, "ivaPercibido": 0, "signo": 1,
+      "lineaCsv": "05/11/2026;4;03;DTE03M001P001000000000000529;…;1;2;1" }
+  ],
+  "consumidorFinal": [ { "correlativo": 1, "fecha": "2026-11-02", "documentos": 5, "delDocumento": "…", "alDocumento": "…",
+      "ventasExentas": 0, "ventasNoSujetas": 0, "ventasGravadas": 167.00, "ivaIncluido": 19.22, "totalVentas": 167.00,
+      "tipoOperacionRenta": 1, "tipoIngresoRenta": 2, "lineaCsv": "…" } ],
+  "compras": [ { "correlativo": 1, "idCompra": 158, "fecha": "2026-11-05", "tipoDocumento": "03", "numeroDocumento": "…", "nitNrc": "…", "dui": "",
+      "nombre": "…", "comprasExentas": 0, "comprasGravadas": 85.40, "creditoFiscal": 11.10, "totalCompras": 85.40, "ivaPercibido": 0,
+      "totalDocumento": 96.50, "tipoOperacionRenta": 1, "clasificacionRenta": 2, "sectorRenta": 4, "tipoCostoGasto": 2, "signo": 1, "lineaCsv": "…" } ],
+  "anulados": [ { "correlativo": 1, "idDte": 511, "fecha": "2026-11-02", "fechaDocumento": "2026-10-31", "numeroResolucion": "DTE-01-M001P001-000000000000511",
+      "tipoDocumento": "01", "serie": "…", "codigoGeneracion": "A1B2C3D4-0000-4000-8000-0000000001FF", "lineaCsv": "…" } ],
+  "pendientes": { "sinSello": 1 }
+}
+```
+
+- **`lineaCsv` la arma la base** (funciones `fn_anexo_*`): la API la pasa tal cual. La pantalla une las líneas con `\r\n` y descarga el archivo para "Subir detalle de ventas y compras" del F-07.
+- `pendientes.sinSello`: DTE de producción del mes que todavía no tienen sello (contingencia o rechazo). No salen en los libros hasta que Hacienda los acepta.
+- `periodo` inválido o en el futuro → 400 `campos.periodo`.
 
 ## Configuración (`tb_emisores`, `tb_parametros`, `tb_horarios`, `tb_formas_pago`, `tb_usuarios`)
 

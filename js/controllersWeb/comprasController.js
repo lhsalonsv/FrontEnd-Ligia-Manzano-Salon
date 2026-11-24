@@ -1,19 +1,21 @@
 /**
  * comprasController.js — Ligia Manzano Salón
  * Pantalla Compras: historial de compras (con su detalle), proveedores (ficha y formulario en el panel)
- * y registrar una compra, que crea un lote PEPS por producto.
+ * y registrar una compra: productos (cada uno crea un lote PEPS) y gastos del local (alquiler, luz…),
+ * con los datos que pide el libro de compras de IVA (migración 1.3).
  *
  * URL: compras.html?vista=proveedores · compras.html?registrar[&idProducto=1][&idProveedor=2]
  */
 import { montarLayout } from '../utils/layout.js';
 import { icono } from '../utils/icons.js';
-import { escapar, dinero, numero, fechaCorta, fechaLarga, fechaHora, fechaIso, MESES } from '../utils/formato.js';
-import { centavos, totalesCompra } from '../utils/calculos.js';
+import { escapar, dinero, numero, fechaCorta, fechaLarga, fechaHora, fechaIso, mesAnio, MESES } from '../utils/formato.js';
+import { centavos, totalesCompra, DOCUMENTOS_CON_IVA, PERCEPCION_PCT } from '../utils/calculos.js';
 import { campo, entrada, mostrarErrores } from '../utils/formulario.js';
 import { crearPanel, htmlCabecera, htmlError, htmlExito } from '../utils/panel.js';
 import { listarProductos, obtenerProducto } from '../services/inventarioService.js';
 import {
   listarProveedores, obtenerProveedor, guardarProveedor, cambiarActivoProveedor, listarCompras, obtenerCompra, registrarCompra,
+  mesDe, RENTA_PRODUCTOS, RENTA_GASTOS,
 } from '../services/comprasService.js';
 
 const sesion = montarLayout({ accion: { id: 'btn-registrar', texto: 'Registrar compra', icono: 'mas' } });
@@ -35,6 +37,10 @@ const estado = {
   seleccion: null, // { tipo: 'compra' | 'proveedor', id }
   sucio: false,
   lineas: [], // registrar: { producto (ficha de inventario), cantidad, costo } — cantidad y costo como texto del input
+  gastos: [], // registrar: { clave: 'g1', descripcion, monto } — sin producto: no tocan el inventario
+  siguienteGasto: 1,
+  rentaTocada: false, // si la usuaria cambió la clasificación para renta, ya no se propone sola
+  comprasProveedor: [], // para elegir la compra que corrige una nota
   idLineaActual: null,
 };
 
@@ -58,8 +64,21 @@ function sePuedeSalir() {
 
 // --- Formatos ----------------------------------------------------------------
 
-const TIPO_DOCUMENTO = { CCF: 'Crédito fiscal', FACTURA: 'Factura', OTRO: 'Otro documento' };
-const TIPO_CORTO = { CCF: 'CCF', FACTURA: 'Factura', OTRO: 'Otro' };
+const TIPO_DOCUMENTO = { CCF: 'Crédito fiscal', FACTURA: 'Factura', NC: 'Nota de crédito', ND: 'Nota de débito', OTRO: 'Otro documento' };
+const TIPO_CORTO = { CCF: 'CCF', FACTURA: 'Factura', NC: 'NC', ND: 'ND', OTRO: 'Otro' };
+const esNota = (tipo) => tipo === 'NC' || tipo === 'ND';
+const conIva = (tipo) => DOCUMENTOS_CON_IVA.includes(tipo);
+
+// Clasificación para renta: columnas Q a T del anexo de compras (códigos de Hacienda).
+const OPERACION_RENTA = { 1: 'Gravada', 2: 'No gravada', 3: 'Excluida o no constituye renta', 4: 'Mixta' };
+const CLASIFICACION_RENTA = { 1: 'Costo', 2: 'Gasto' };
+const TIPOS_COSTO_GASTO = {
+  1: [[5, 'Artículos comprados en el país'], [4, 'Importaciones o internaciones'], [6, 'Costos indirectos de fabricación'], [7, 'Mano de obra']],
+  2: [[2, 'De administración'], [1, 'De venta'], [3, 'Financieros']],
+};
+const SECTOR_RENTA = { 1: 'Industria', 2: 'Comercio', 3: 'Agropecuaria', 4: 'Servicios, profesiones, artes y oficios' };
+const nombreCostoGasto = (codigo) => Object.values(TIPOS_COSTO_GASTO).flat().find(([c]) => c === Number(codigo))?.[1] ?? '';
+const textoRenta = (r) => `${CLASIFICACION_RENTA[r.clasificacionRenta]} · ${nombreCostoGasto(r.tipoCostoGasto).toLowerCase()}`;
 
 /** 'CCF · …2291' */
 const documentoCorto = (tipo, numeroDoc) => `${TIPO_CORTO[tipo] ?? tipo}${numeroDoc ? ` · …${numeroDoc.slice(-4)}` : ''}`;
@@ -117,12 +136,20 @@ function cambiarVista(vista) {
 
 // --- Lista de compras --------------------------------------------------------
 
+/** "3 productos · 24 u", "Gasto · Energía eléctrica…" o "Concepto · Descuento…". */
+function htmlContenido(c) {
+  if (c.productos) return `<b class="block font-normal">${plural(c.productos, 'producto', 'productos')}</b><small class="text-13 text-texto-secundario">${numero(c.unidades)} u${c.gastos ? ` · ${plural(c.gastos, 'gasto', 'gastos')}` : ''}</small>`;
+  const tipo = esNota(c.tipoDocumentoProveedor) ? 'Concepto' : 'Gasto';
+  return `<b class="block font-normal">${c.gastos > 1 ? plural(c.gastos, tipo.toLowerCase(), `${tipo.toLowerCase()}s`) : tipo}</b><small class="block truncate text-13 text-texto-secundario">${escapar(c.primerGasto ?? '')}</small>`;
+}
+
 function htmlFilaCompra(c) {
+  const resta = c.tipoDocumentoProveedor === 'NC';
   return `<button type="button" data-id="${c.idCompra}" class="fila-co ${CLASE_FILA}">
     <span><b class="block font-semibold">${escapar(c.numeroCompra)}</b><small class="text-13 text-texto-secundario">${fechaCorta(c.fechaCompra)}</small></span>
     <span class="min-w-0"><b class="block truncate font-semibold">${escapar(c.nombreProveedor)}</b><small class="text-13 text-texto-secundario">${escapar(documentoCorto(c.tipoDocumentoProveedor, c.numeroDocumentoProveedor))}</small></span>
-    <span class="@max-lg:hidden"><b class="block font-normal">${plural(c.productos, 'producto', 'productos')}</b><small class="text-13 text-texto-secundario">${numero(c.unidades)} u</small></span>
-    <span class="text-right font-semibold">${dinero(c.total)}</span>
+    <span class="min-w-0 @max-lg:hidden">${htmlContenido(c)}</span>
+    <span class="text-right font-semibold" ${resta ? 'title="Nota de crédito: resta"' : ''}>${resta ? '−' : ''}${dinero(c.total)}</span>
   </button>`;
 }
 
@@ -191,37 +218,51 @@ async function mostrarCompra(idCompra, aviso = '') {
   if (estado.seleccion?.tipo !== 'compra' || estado.seleccion.id !== c.idCompra) return;
 
   const anulada = c.estado === 'ANULADA';
+  const nota = esNota(c.tipoDocumentoProveedor);
   const fila = (etiqueta, valor, clase = '') => `<li class="flex justify-between gap-3 py-1 ${clase}"><span>${etiqueta}</span><span>${valor}</span></li>`;
+  const productos = c.detalle.filter((d) => d.idProducto).length;
+  let titulo = nota ? 'Conceptos' : 'Gastos <span class="font-normal">no entran al inventario</span>';
+  if (productos) titulo = productos === c.detalle.length ? 'Productos <span class="font-normal">cada uno creó un lote</span>' : 'Detalle <span class="font-normal">cada producto creó un lote</span>';
+  const htmlDetalle = (d) => (d.idProducto ? `
+        <li class="grid grid-cols-[1fr_auto] gap-x-3 border-b border-neutro-100 py-2 tabular-nums">
+          <a class="font-semibold underline decoration-borde-fuerte underline-offset-2" href="inventario.html?idProducto=${d.idProducto}">${escapar(d.nombreProducto)}</a>
+          <b class="text-right font-semibold">${dinero(d.subtotal)}</b>
+          <small class="text-13 text-texto-secundario">${numero(d.cantidad)} × ${dinero(d.costoUnitario)}</small>
+          <small class="text-right text-13 text-texto-secundario">quedan <b class="font-semibold text-texto-principal">${numero(d.cantidadDisponible)}</b> de ${numero(d.cantidad)}</small>
+        </li>` : `
+        <li class="grid grid-cols-[1fr_auto] gap-x-3 border-b border-neutro-100 py-2 tabular-nums">
+          <b class="min-w-0 font-semibold" data-campo="descripcion">${escapar(d.descripcion)}</b><b class="text-right font-semibold">${dinero(d.subtotal)}</b>
+          <small class="text-13 text-texto-secundario">${nota ? 'concepto de la nota' : 'gasto del local'}</small>
+        </li>`);
   panelEl.innerHTML = `
     ${htmlCabecera(`Compra ${c.numeroCompra}`, `${escapar(c.nombreProveedor)} · ${fechaLarga(c.fechaCompra)}`, {
       antes: `<div class="mb-2"><span class="insignia ${anulada ? 'insignia-apagada' : 'insignia-ok'}">${anulada ? 'Anulada' : 'Recibida'}</span></div>`,
     })}
     ${aviso ? htmlExito(aviso) : ''}
     <dl class="datos">
-      <dt>Documento</dt><dd><b class="font-semibold">${TIPO_DOCUMENTO[c.tipoDocumentoProveedor]}</b><small class="break-all">${escapar(c.numeroDocumentoProveedor ?? 'Sin número')}</small></dd>
+      <dt>Documento</dt><dd><b class="font-semibold">${TIPO_DOCUMENTO[c.tipoDocumentoProveedor]}${c.claseDocumento === 1 ? ' impreso' : ''}</b><small class="break-all">${escapar(c.numeroDocumentoProveedor ?? 'Sin número')}</small>${c.codigoGeneracionProveedor ? `<small class="font-mono text-xs break-all" data-campo="codigo_generacion_proveedor" title="Código de generación">${escapar(c.codigoGeneracionProveedor)}</small>` : ''}</dd>
+      ${c.idCompraRelacionada ? `<dt>Corrige</dt><dd data-campo="id_compra_relacionada"><button type="button" class="cursor-pointer font-semibold underline decoration-borde-fuerte underline-offset-2" data-accion="ver-compra" data-id="${c.idCompraRelacionada}">Compra ${escapar(c.numeroCompraRelacionada)}</button></dd>` : ''}
+      ${conIva(c.tipoDocumentoProveedor) ? `<dt>Crédito fiscal</dt><dd data-campo="periodo_iva">Se declara en ${mesAnio(`${c.periodoIva}T00:00:00`)}</dd>` : ''}
+      <dt>Para renta</dt><dd>${textoRenta(c)}</dd>
       <dt>Pago</dt><dd>${c.fechaVencimientoPago ? `Vence el ${fechaLarga(c.fechaVencimientoPago)}` : 'De contado'}</dd>
       <dt>Registró</dt><dd>${escapar(c.nombreUsuario)}<small>${fechaHora(c.creadoEn)}</small></dd>
     </dl>
     <div class="separa"></div>
     <div class="panel-seccion text-sm">
-      <h3 class="panel-titulo">Productos <span class="font-normal">cada uno creó un lote</span></h3>
-      <ul>${c.detalle.map((d) => `
-        <li class="grid grid-cols-[1fr_auto] gap-x-3 border-b border-neutro-100 py-2 tabular-nums">
-          <a class="font-semibold underline decoration-borde-fuerte underline-offset-2" href="inventario.html?idProducto=${d.idProducto}">${escapar(d.nombreProducto)}</a>
-          <b class="text-right font-semibold">${dinero(d.subtotal)}</b>
-          <small class="text-13 text-texto-secundario">${numero(d.cantidad)} × ${dinero(d.costoUnitario)}</small>
-          <small class="text-right text-13 text-texto-secundario">quedan <b class="font-semibold text-texto-principal">${numero(d.cantidadDisponible)}</b> de ${numero(d.cantidad)}</small>
-        </li>`).join('')}
+      <h3 class="panel-titulo">${titulo}</h3>
+      <ul>${c.detalle.map(htmlDetalle).join('')}
       </ul>
       <ul class="mt-2 tabular-nums">
-        ${fila('Subtotal', dinero(c.subtotalSinIva), 'text-texto-secundario')}
-        ${c.tipoDocumentoProveedor === 'CCF' ? fila(`IVA ${estado.ivaPct} % (crédito fiscal)`, dinero(c.iva), 'text-texto-secundario') : ''}
-        ${fila('Total', dinero(c.total), 'text-base font-semibold')}
+        ${fila(c.comprasExentas ? 'Gravado' : 'Subtotal', dinero(c.subtotalSinIva), 'text-texto-secundario')}
+        ${c.comprasExentas ? fila('Exento o no sujeto', dinero(c.comprasExentas), 'text-texto-secundario') : ''}
+        ${conIva(c.tipoDocumentoProveedor) ? fila(`IVA ${estado.ivaPct} % (crédito fiscal)`, dinero(c.iva), 'text-texto-secundario') : ''}
+        ${c.ivaPercibido ? fila(`Percepción ${PERCEPCION_PCT} % (anticipo de IVA)`, dinero(c.ivaPercibido), 'text-texto-secundario') : ''}
+        ${fila(c.tipoDocumentoProveedor === 'NC' ? 'Total que resta' : 'Total', dinero(c.total), 'text-base font-semibold')}
       </ul>
     </div>
     <div class="mx-6 mt-4 flex gap-2 rounded-medio border border-borde-default bg-fondo-sutil p-3 text-sm text-texto-secundario">
       ${icono('candado', 'mt-0.5 size-[18px]')}
-      <p><b class="block font-semibold text-texto-principal">Las compras no se editan</b>Si algo llegó mal, corrígelo con un ajuste en Inventario.</p>
+      <p><b class="block font-semibold text-texto-principal">Las compras no se editan</b>Si algo llegó mal, corrígelo con un ajuste en Inventario o con la nota de crédito del proveedor.</p>
     </div>
     <div class="h-6 shrink-0"></div>`;
   panel.enfocarTitulo(Boolean(aviso));
@@ -322,7 +363,7 @@ async function mostrarProveedor(idProveedor, aviso = '') {
       <h3 class="panel-titulo">Últimas compras <span class="font-normal tabular-nums">${numero(p.comprasAnio.cantidad)} este año · ${dinero(p.comprasAnio.total)}</span></h3>
       ${p.ultimasCompras.length ? `<ul>${p.ultimasCompras.map((c) => `
         <li><button type="button" data-accion="ver-compra" data-id="${c.idCompra}" class="flex w-full cursor-pointer justify-between gap-3 border-b border-neutro-100 py-1.5 text-left tabular-nums hover:bg-fondo-sutil">
-          <span><span class="text-texto-secundario">${fechaCorta(c.fechaCompra)}</span> · ${escapar(c.numeroCompra)} · ${plural(c.productos, 'producto', 'productos')}</span><b class="font-semibold">${dinero(c.total)}</b>
+          <span><span class="text-texto-secundario">${fechaCorta(c.fechaCompra)}</span> · ${escapar(c.numeroCompra)} · ${c.productos ? plural(c.productos, 'producto', 'productos') : esNota(c.tipoDocumentoProveedor) ? TIPO_CORTO[c.tipoDocumentoProveedor] : 'gasto'}</span><b class="font-semibold">${c.tipoDocumentoProveedor === 'NC' ? '−' : ''}${dinero(c.total)}</b>
         </button></li>`).join('')}</ul>` : '<p class="text-texto-secundario">Todavía no se le ha comprado.</p>'}
     </div>
     <div class="mt-auto flex flex-col gap-3 border-t border-borde-default px-6 pt-4 pb-6 max-xl:mt-6">
@@ -519,20 +560,105 @@ function actualizarLinea(linea) {
   li.querySelector('[data-cambio]').textContent = cambio === null ? '' : `${cambio > 0 ? 'subió' : 'bajó'} ${dinero(Math.abs(cambio))}`;
 }
 
-function pintarResumen() {
+// --- Gastos del local (líneas sin producto) ---------------------------------
+
+const montoValido = (n) => n !== null && n >= 0 && Math.abs(n * 100 - Math.round(n * 100)) < 1e-6;
+const gastosListos = () => estado.gastos
+  .map((g) => ({ ...g, m: comoNumero(g.monto) }))
+  .filter((g) => g.descripcion.trim() && montoValido(g.m) && g.m > 0);
+
+function htmlGasto({ clave, descripcion, monto }) {
+  return `<li class="fila-gasto" data-gasto="${clave}">
+    <label class="block min-w-0"><span class="mb-1 block text-13 text-texto-secundario md:sr-only">Descripción</span>
+      <div class="campo-caja h-10 min-h-0"><input name="descripcion-${clave}" id="f-descripcion-${clave}" value="${escapar(descripcion)}" maxlength="200" autocomplete="off" placeholder="Ej.: Energía eléctrica del local" aria-label="Qué se pagó"></div></label>
+    <label class="block"><span class="mb-1 block text-13 text-texto-secundario md:sr-only">Monto sin IVA</span>
+      <div class="campo-caja h-10 min-h-0"><span class="text-texto-secundario">$</span><input name="monto-${clave}" id="f-monto-${clave}" value="${escapar(monto)}" type="number" inputmode="decimal" min="0.01" step="0.01" class="text-right tabular-nums" aria-label="Monto sin IVA"></div></label>
+    <button type="button" class="mt-1 grid size-8 cursor-pointer place-items-center self-end rounded-chico text-texto-secundario hover:bg-fondo-sutil md:self-start" data-accion="quitar-gasto" data-id="${clave}" aria-label="Quitar este gasto">${icono('cerrar', 'size-[18px]')}</button>
+    <div class="col-span-full hidden has-[.campo-error:not(.hidden)]:block"><p class="campo-error mt-0 hidden" id="error-descripcion-${clave}"></p><p class="campo-error mt-0 hidden" id="error-monto-${clave}"></p></div>
+  </li>`;
+}
+
+function pintarGastos() {
+  $('gastos').innerHTML = estado.gastos.map(htmlGasto).join('');
+  $('gastos-vacio').classList.toggle('hidden', estado.gastos.length > 0);
+  $('cabecera-gastos').classList.toggle('md:grid', estado.gastos.length > 0);
+  pintarResumen();
+}
+
+function agregarGasto() {
+  const clave = `g${estado.siguienteGasto++}`;
+  estado.gastos.push({ clave, descripcion: '', monto: '' });
+  estado.sucio = true;
+  pintarGastos();
+  $(`f-descripcion-${clave}`).focus();
+}
+
+// --- Clasificación para renta (anexo de compras) ----------------------------
+
+const opciones = (pares, actual) => pares.map(([v, t]) => `<option value="${v}" ${Number(v) === Number(actual) ? 'selected' : ''}>${t}</option>`).join('');
+
+/** Lo que se propone mientras la usuaria no la cambie: productos para vender = costo; una nota, lo de su compra; lo demás = gasto. */
+function rentaPropuesta() {
+  if (esNota($('form-compra').elements.tipoDocumentoProveedor.value)) return estado.rentaRelacionada ?? RENTA_GASTOS;
+  return estado.lineas.length ? RENTA_PRODUCTOS : RENTA_GASTOS;
+}
+
+function leerRenta() {
+  const e = $('form-compra').elements;
+  return {
+    tipoOperacionRenta: Number(e.tipoOperacionRenta.value), clasificacionRenta: Number(e.clasificacionRenta.value),
+    sectorRenta: Number(e.sectorRenta.value), tipoCostoGasto: Number(e.tipoCostoGasto.value),
+  };
+}
+
+function ponerRenta(r) {
+  const e = $('form-compra').elements;
+  e.tipoOperacionRenta.value = r.tipoOperacionRenta;
+  e.clasificacionRenta.value = r.clasificacionRenta;
+  e.sectorRenta.value = r.sectorRenta;
+  e.tipoCostoGasto.innerHTML = opciones(TIPOS_COSTO_GASTO[r.clasificacionRenta], r.tipoCostoGasto);
+}
+
+function pintarRenta() {
+  if (!estado.rentaTocada) {
+    const propuesta = rentaPropuesta();
+    if (JSON.stringify(propuesta) !== JSON.stringify(leerRenta())) ponerRenta(propuesta);
+  }
+  const r = leerRenta();
+  $('resumen-renta').textContent = `${OPERACION_RENTA[r.tipoOperacionRenta]} · ${textoRenta(r)}`;
+}
+
+/** Totales como los guardará la base: gravado (productos + gastos), exento, IVA, percepción y total. */
+function totalesFormulario() {
   const form = $('form-compra');
   const tipo = form.elements.tipoDocumentoProveedor.value;
-  const listas = lineasListas();
-  const { subtotalSinIva, iva, total } = totalesCompra(listas.map((l) => ({ cantidad: l.n, costoUnitario: l.c })), estado.ivaPct, tipo);
-  const unidades = listas.reduce((s, l) => s + l.n, 0);
+  const productos = esNota(tipo) ? [] : lineasListas().map((l) => ({ cantidad: l.n, costoUnitario: l.c }));
+  const gastos = gastosListos().map((g) => ({ cantidad: 1, costoUnitario: g.m }));
+  const exentas = comoNumero(form.elements.comprasExentas.value);
+  return totalesCompra([...productos, ...gastos], estado.ivaPct, tipo, {
+    exentas: montoValido(exentas) ? exentas : 0, percepcion: form.elements.percepcion.checked,
+  });
+}
+
+function pintarResumen() {
+  const tipo = $('form-compra').elements.tipoDocumentoProveedor.value;
+  const nota = esNota(tipo);
+  const unidades = nota ? 0 : lineasListas().reduce((s, l) => s + l.n, 0);
+  const { subtotalSinIva, comprasExentas, iva, ivaPercibido, total } = totalesFormulario();
   const fila = (etiqueta, valor, clase = 'text-texto-secundario') => `<li class="flex justify-between gap-3 py-1 ${clase}"><span>${etiqueta}</span><span>${valor}</span></li>`;
+  const cuenta = [];
+  if (!nota && (estado.lineas.length || !estado.gastos.length)) cuenta.push(`${plural(estado.lineas.length, 'producto', 'productos')} · ${plural(unidades, 'unidad', 'unidades')}`);
+  if (nota || estado.gastos.length) cuenta.push(nota ? plural(estado.gastos.length, 'concepto', 'conceptos') : plural(estado.gastos.length, 'gasto', 'gastos'));
   $('resumen-compra').innerHTML = `
-    <p class="mb-2 text-texto-secundario">${plural(estado.lineas.length, 'producto', 'productos')} · ${plural(unidades, 'unidad', 'unidades')}</p>
+    <p class="mb-2 text-texto-secundario">${cuenta.join(' · ')}</p>
     <ul class="tabular-nums">
-      ${fila('Subtotal', dinero(subtotalSinIva))}
-      ${fila(tipo === 'CCF' ? `IVA ${estado.ivaPct} % (crédito fiscal)` : 'IVA (no se acredita: va dentro del costo)', dinero(iva))}
-      ${fila('Total a pagar', dinero(total), 'text-base font-semibold border-t border-borde-default mt-1 pt-2')}
+      ${fila(comprasExentas ? 'Gravado' : 'Subtotal', dinero(subtotalSinIva))}
+      ${comprasExentas ? fila('Exento o no sujeto', dinero(comprasExentas)) : ''}
+      ${fila(conIva(tipo) ? `IVA ${estado.ivaPct} % (crédito fiscal)` : 'IVA (no se acredita: va dentro del costo)', dinero(iva))}
+      ${ivaPercibido ? fila(`Percepción ${PERCEPCION_PCT} % (anticipo de IVA)`, dinero(ivaPercibido)) : ''}
+      ${fila(tipo === 'NC' ? 'Total que resta' : 'Total a pagar', dinero(total), 'text-base font-semibold border-t border-borde-default mt-1 pt-2')}
     </ul>`;
+  pintarRenta();
   pintarLotes();
 }
 
@@ -540,8 +666,12 @@ function pintarResumen() {
 function pintarLotes() {
   const caja = $('lotes-compra');
   const linea = estado.lineas.find((l) => l.producto.idProducto === estado.idLineaActual) ?? estado.lineas.at(-1);
+  if (esNota($('form-compra').elements.tipoDocumentoProveedor.value)) {
+    caja.innerHTML = '<p class="text-texto-secundario">Una nota del proveedor no mueve el inventario.</p>';
+    return;
+  }
   if (!linea) {
-    caja.innerHTML = '<p class="text-texto-secundario">Agregue un producto para ver cómo quedan sus lotes.</p>';
+    caja.innerHTML = `<p class="text-texto-secundario">${estado.gastos.length ? 'Los gastos no entran al inventario.' : 'Agregue un producto para ver cómo quedan sus lotes.'}</p>`;
     return;
   }
   const p = linea.producto;
@@ -575,17 +705,91 @@ function ayudaProveedor(form) {
   return `NRC ${escapar(nrcConGuion(p.nrc))} · ${p.diasCredito ? `crédito ${p.diasCredito} días${vence}` : 'de contado'}`;
 }
 
-const etiquetaDocumento = (tipo) => ({ CCF: 'N.º de control o código del CCF', FACTURA: 'N.º de control o código de la factura', OTRO: 'N.º del documento' }[tipo]);
+const etiquetaDocumento = (tipo, impreso) => {
+  if (tipo === 'OTRO' || impreso) return 'N.º del documento';
+  return { CCF: 'N.º de control del CCF', FACTURA: 'N.º de control de la factura', NC: 'N.º de control de la nota', ND: 'N.º de control de la nota' }[tipo];
+};
+
+/** Los 4 meses en que se puede declarar el crédito fiscal: el del documento y los 3 siguientes (art. 63 Ley de IVA). */
+function pintarPeriodos() {
+  const form = $('form-compra');
+  const select = form.elements.periodoIva;
+  const base = new Date(`${mesDe(form.elements.fechaCompra.value || fechaIso())}T00:00:00`);
+  const meses = [0, 1, 2, 3].map((n) => fechaIso(new Date(base.getFullYear(), base.getMonth() + n, 1)));
+  const actual = meses.includes(select.value) ? select.value : meses[0];
+  select.innerHTML = meses.map((m, i) => `<option value="${m}" ${m === actual ? 'selected' : ''}>${mesAnio(`${m}T00:00:00`)}${i === 0 ? ' (el del documento)' : ''}</option>`).join('');
+}
+
+let peticionRelacionadas = 0;
+/** Las compras con crédito fiscal del proveedor, para elegir cuál corrige la nota. */
+async function cargarRelacionadas() {
+  const form = $('form-compra');
+  const select = form.elements.idCompraRelacionada;
+  const idProveedor = form.elements.idProveedor.value;
+  const id = ++peticionRelacionadas;
+  if (!idProveedor) {
+    select.innerHTML = '<option value="">Primero elija el proveedor</option>';
+    return;
+  }
+  const { contenido } = await listarCompras({ idProveedor });
+  if (id !== peticionRelacionadas) return;
+  const ccf = contenido.filter((c) => c.tipoDocumentoProveedor === 'CCF' && c.estado !== 'ANULADA');
+  const elegida = select.value;
+  select.innerHTML = ccf.length
+    ? `<option value="">Elegir…</option>${ccf.map((c) => `<option value="${c.idCompra}" ${String(c.idCompra) === elegida ? 'selected' : ''}>${escapar(c.numeroCompra)} · ${fechaCorta(c.fechaCompra)} · ${dinero(c.total)}</option>`).join('')}`
+    : '<option value="">Este proveedor no tiene créditos fiscales</option>';
+}
+
+/** La nota toma la clasificación para renta de la compra que corrige. */
+async function rentaDeRelacionada(idCompra) {
+  estado.rentaRelacionada = null;
+  if (idCompra) {
+    const c = await obtenerCompra(idCompra);
+    estado.rentaRelacionada = {
+      tipoOperacionRenta: c.tipoOperacionRenta, clasificacionRenta: c.clasificacionRenta, sectorRenta: c.sectorRenta, tipoCostoGasto: c.tipoCostoGasto,
+    };
+  }
+  pintarRenta();
+}
+
+/** Muestra solo los campos que pide el tipo de documento elegido. */
+function pintarDocumento() {
+  const form = $('form-compra');
+  const tipo = form.elements.tipoDocumentoProveedor.value;
+  const impreso = form.elements.claseImpreso.checked;
+  const caja = (columna) => form.querySelector(`[data-campo="${columna}"]`);
+  caja('clase_documento').hidden = !conIva(tipo);
+  caja('codigo_generacion_proveedor').hidden = !conIva(tipo) || impreso;
+  caja('id_compra_relacionada').hidden = !esNota(tipo);
+  caja('periodo_iva').hidden = !conIva(tipo);
+  caja('iva_percibido').hidden = !conIva(tipo);
+  $('etiqueta-documento').innerHTML = `${etiquetaDocumento(tipo, impreso)} ${tipo === 'OTRO' ? '<span class="opcional">opcional</span>' : '<span class="text-estado-error" aria-hidden="true">*</span>'}`;
+  $('ayuda-idProveedor').innerHTML = ayudaProveedor(form);
+  $('tarjeta-productos').hidden = esNota(tipo);
+  $('titulo-gastos').textContent = esNota(tipo) ? 'Conceptos de la nota' : 'Gastos del local';
+  $('ayuda-gastos').textContent = esNota(tipo)
+    ? 'Una nota no mueve el inventario: si se devolvió producto, regístralo con un ajuste en Inventario.'
+    : 'Alquiler, luz, agua, mantenimiento: no entran al inventario.';
+  form.elements.agregarGasto.lastChild.textContent = esNota(tipo) ? 'Agregar concepto' : 'Agregar gasto';
+  pintarPeriodos();
+  if (esNota(tipo)) cargarRelacionadas().catch(() => {});
+  pintarResumen();
+}
 
 async function abrirRegistrar({ idProveedor = null, idProductos = [] } = {}) {
   if (!sePuedeSalir()) return;
   estado.lineas = [];
+  estado.gastos = [];
+  estado.siguienteGasto = 1;
+  estado.rentaTocada = false;
+  estado.rentaRelacionada = null;
   estado.idLineaActual = null;
   estado.seleccion = null;
   panel.cerrar();
   cambiarVista('registrar');
   const hoy = fechaIso();
   const activos = estado.proveedores.filter((p) => p.activo);
+  const r = RENTA_GASTOS;
 
   $('vista-registrar').innerHTML = `
     <form id="form-compra" class="contents" novalidate>
@@ -602,15 +806,27 @@ async function abrirRegistrar({ idProveedor = null, idProductos = [] } = {}) {
             ${campo({ nombre: 'idProveedor', columna: 'id_proveedor', etiqueta: 'Proveedor', obligatorio: true, ayuda: 'Solo salen los activos.', control: `<select id="f-idProveedor" name="idProveedor" aria-describedby="ayuda-idProveedor"><option value="">Elegir…</option>${activos.map((p) => `<option value="${p.idProveedor}" ${p.idProveedor === Number(idProveedor) ? 'selected' : ''}>${escapar(p.nombreComercial)}</option>`).join('')}</select>` })}
             ${campo({ nombre: 'fechaCompra', columna: 'fecha_compra', etiqueta: 'Fecha de la compra', obligatorio: true, control: entrada('fechaCompra', hoy, `type="date" max="${hoy}"`) })}
             ${campo({ nombre: 'tipoDocumentoProveedor', columna: 'tipo_documento_proveedor', etiqueta: 'Documento', obligatorio: true, control: `<select id="f-tipoDocumentoProveedor" name="tipoDocumentoProveedor">${Object.entries(TIPO_DOCUMENTO).map(([v, t]) => `<option value="${v}">${t}${v === 'CCF' ? ' (CCF)' : ''}</option>`).join('')}</select>` })}
+            <div data-campo="clase_documento" class="sm:self-end sm:pb-2.5">
+              <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="claseImpreso" class="size-4 accent-neutro-900"> Es un documento impreso (no electrónico)</label>
+            </div>
             <div data-campo="numero_documento_proveedor">
               <label class="campo-etiqueta" for="f-numeroDocumentoProveedor" id="etiqueta-documento"></label>
               <div class="campo-caja"><input id="f-numeroDocumentoProveedor" name="numeroDocumentoProveedor" maxlength="40" autocomplete="off" spellcheck="false" class="font-mono text-sm" placeholder="DTE-03-…"></div>
               <p class="campo-error hidden" id="error-numeroDocumentoProveedor"></p>
             </div>
+            ${campo({ nombre: 'codigoGeneracionProveedor', columna: 'codigo_generacion_proveedor', etiqueta: 'Código de generación', obligatorio: true, ayuda: 'Viene en el documento, con guiones. Es lo que pide el libro de compras.', control: entrada('codigoGeneracionProveedor', '', 'maxlength="36" autocomplete="off" spellcheck="false" class="font-mono text-sm uppercase" placeholder="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX" aria-describedby="ayuda-codigoGeneracionProveedor"') })}
+            <div class="sm:col-span-2" data-campo="id_compra_relacionada">
+              ${campo({ nombre: 'idCompraRelacionada', columna: 'id_compra_relacionada', etiqueta: 'Compra que corrige', obligatorio: true, control: '<select id="f-idCompraRelacionada" name="idCompraRelacionada"><option value="">Primero elija el proveedor</option></select>' }).replace(' data-campo="id_compra_relacionada"', '')}
+            </div>
+            ${campo({ nombre: 'periodoIva', columna: 'periodo_iva', etiqueta: 'Mes del crédito fiscal', obligatorio: true, ayuda: 'El del documento o hasta 3 meses después.', control: '<select id="f-periodoIva" name="periodoIva" aria-describedby="ayuda-periodoIva"></select>' })}
+            ${campo({ nombre: 'comprasExentas', columna: 'compras_exentas', etiqueta: 'Exento o no sujeto', control: `<span class="text-texto-secundario">$</span>${entrada('comprasExentas', '', 'type="number" inputmode="decimal" min="0" step="0.01" class="text-right tabular-nums" placeholder="0.00" aria-describedby="ayuda-comprasExentas"')}`, ayuda: 'Solo si el documento trae montos sin IVA.' })}
+            <div class="sm:col-span-2" data-campo="iva_percibido">
+              <label class="flex items-start gap-2 text-sm"><input type="checkbox" name="percepcion" class="mt-0.5 size-4 accent-neutro-900"> <span>El proveedor cobró percepción de IVA del ${PERCEPCION_PCT} % <span class="text-texto-secundario">(lo cobran los grandes contribuyentes en compras de $100 o más)</span></span></label>
+            </div>
           </div>
         </div>
 
-        <div class="tarjeta rounded-grande p-4 sm:px-6">
+        <div class="tarjeta rounded-grande p-4 sm:px-6" id="tarjeta-productos">
           <h3 class="mb-3 font-semibold">Productos que llegaron</h3>
           <div id="cabecera-lineas" class="hidden grid-cols-[minmax(0,1fr)_88px_136px_96px_32px] gap-x-3 border-b border-borde-default pb-2 text-13 font-semibold text-texto-secundario" aria-hidden="true">
             <span>Producto</span><span>Cantidad</span><span>Costo c/u sin IVA</span><span class="text-right">Subtotal</span><span></span>
@@ -628,6 +844,34 @@ async function abrirRegistrar({ idProveedor = null, idProductos = [] } = {}) {
           </div>
           <p class="mt-4 flex gap-2 text-sm text-texto-secundario">${icono('info', 'mt-0.5 size-[18px] text-estado-info')}<span>Cada producto entra como un lote nuevo con su propio costo. Se vende después de los lotes que ya hay (PEPS), así el costo de cada venta es el real.</span></p>
         </div>
+
+        <div class="tarjeta rounded-grande p-4 sm:px-6" data-campo="descripcion">
+          <div class="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            <h3 class="font-semibold" id="titulo-gastos">Gastos del local</h3>
+            <span class="text-13 text-texto-secundario" id="ayuda-gastos"></span>
+          </div>
+          <div id="cabecera-gastos" class="hidden grid-cols-[minmax(0,1fr)_136px_32px] gap-x-3 border-b border-borde-default pb-2 text-13 font-semibold text-texto-secundario" aria-hidden="true">
+            <span>Qué se pagó</span><span>Monto sin IVA</span><span></span>
+          </div>
+          <ul id="gastos"></ul>
+          <p id="gastos-vacio" class="py-2 text-sm text-texto-secundario">Sin gastos en este documento.</p>
+          <button type="button" name="agregarGasto" class="btn btn-secundario mt-3 h-9 px-3 text-sm" data-accion="agregar-gasto">${icono('mas')}<span>Agregar gasto</span></button>
+          <p class="campo-error hidden" id="error-agregarGasto"></p>
+        </div>
+
+        <details class="tarjeta group rounded-grande p-4 sm:px-6">
+          <summary class="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
+            <span class="min-w-0"><b class="block font-semibold">Para el anexo de Hacienda</b><small class="block text-13 text-texto-secundario" id="resumen-renta"></small></span>
+            ${icono('abajo', 'size-5 shrink-0 text-texto-secundario transition-transform group-open:rotate-180')}
+          </summary>
+          <div class="mt-4 grid gap-4 sm:grid-cols-2">
+            ${campo({ nombre: 'clasificacionRenta', columna: 'clasificacion_renta', etiqueta: 'Es un', obligatorio: true, control: `<select id="f-clasificacionRenta" name="clasificacionRenta">${opciones(Object.entries(CLASIFICACION_RENTA), r.clasificacionRenta)}</select>` })}
+            ${campo({ nombre: 'tipoCostoGasto', columna: 'tipo_costo_gasto', etiqueta: 'Tipo', obligatorio: true, control: `<select id="f-tipoCostoGasto" name="tipoCostoGasto">${opciones(TIPOS_COSTO_GASTO[r.clasificacionRenta], r.tipoCostoGasto)}</select>` })}
+            ${campo({ nombre: 'tipoOperacionRenta', columna: 'tipo_operacion_renta', etiqueta: 'Operación', obligatorio: true, control: `<select id="f-tipoOperacionRenta" name="tipoOperacionRenta">${opciones(Object.entries(OPERACION_RENTA), r.tipoOperacionRenta)}</select>` })}
+            ${campo({ nombre: 'sectorRenta', columna: 'sector_renta', etiqueta: 'Sector', obligatorio: true, control: `<select id="f-sectorRenta" name="sectorRenta">${opciones(Object.entries(SECTOR_RENTA), r.sectorRenta)}</select>` })}
+          </div>
+          <p class="mt-3 text-13 text-texto-secundario">Se proponen solas: productos para vender = costo; lo demás = gasto. Pendiente de confirmar con la contadora.</p>
+        </details>
       </section>
 
       <aside class="flex flex-col border-borde-default bg-fondo-superficie max-xl:border-t xl:sticky xl:top-16 xl:h-[calc(100dvh-4rem)] xl:overflow-y-auto xl:border-l" aria-label="Resumen de la compra">
@@ -640,19 +884,14 @@ async function abrirRegistrar({ idProveedor = null, idProductos = [] } = {}) {
             <button type="button" class="btn btn-secundario" data-accion="cancelar-compra">Cancelar</button>
             <button type="submit" class="btn btn-primario" id="btn-guardar-compra">Guardar compra</button>
           </div>
-          <p class="text-center text-13 text-texto-secundario">La existencia sube al guardar y queda en la bitácora.</p>
+          <p class="text-center text-13 text-texto-secundario">Los productos suben la existencia al guardar. Todo queda en la bitácora.</p>
         </div>
       </aside>
     </form>`;
 
-  const form = $('form-compra');
-  const pintarDocumento = () => {
-    const tipo = form.elements.tipoDocumentoProveedor.value;
-    $('etiqueta-documento').innerHTML = `${etiquetaDocumento(tipo)} ${tipo === 'OTRO' ? '<span class="opcional">opcional</span>' : '<span class="text-estado-error" aria-hidden="true">*</span>'}`;
-    $('ayuda-idProveedor').innerHTML = ayudaProveedor(form);
-  };
-  pintarDocumento();
   pintarLineas();
+  pintarGastos();
+  pintarDocumento();
   $('titulo-registrar').focus();
   for (const id of idProductos) await agregarLinea(id, { enfocar: false });
   estado.sucio = false; // lo que llegó por la URL o el aviso no cuenta como cambio
@@ -717,25 +956,63 @@ async function agregarDesdeBuscador(input) {
   await agregarLinea(elegido.idProducto);
 }
 
+/** Código de generación con guiones y en mayúsculas; acepta los 32 caracteres sin guiones. Null si no tiene forma de código. */
+function normalizarCodigo(texto) {
+  const limpio = texto.replace(/\s+/g, '').toUpperCase();
+  const sinGuiones = limpio.replace(/-/g, '');
+  if (!/^[0-9A-F]{32}$/.test(sinGuiones) || (limpio.includes('-') && !/^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/.test(limpio))) return null;
+  return sinGuiones.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, '$1-$2-$3-$4-$5');
+}
+
 function leerCompra(form) {
   const v = (nombre) => form.elements[nombre].value.trim();
+  const tipo = v('tipoDocumentoProveedor');
+  const nota = esNota(tipo);
+  const impreso = conIva(tipo) && form.elements.claseImpreso.checked;
+  const pideCodigo = conIva(tipo) && !impreso;
+  const exentas = comoNumero(v('comprasExentas'));
   const datos = {
     idProveedor: Number(v('idProveedor')) || null,
     fechaCompra: v('fechaCompra'),
-    tipoDocumentoProveedor: v('tipoDocumentoProveedor'),
+    tipoDocumentoProveedor: tipo,
     numeroDocumentoProveedor: v('numeroDocumentoProveedor').replace(/\s+/g, '') || null,
-    detalle: estado.lineas.map((l) => ({ idProducto: l.producto.idProducto, cantidad: comoNumero(l.cantidad), costoUnitario: comoNumero(l.costo) })),
+    claseDocumento: impreso ? 1 : 4,
+    codigoGeneracionProveedor: pideCodigo ? normalizarCodigo(v('codigoGeneracionProveedor')) : null,
+    idCompraRelacionada: nota ? Number(v('idCompraRelacionada')) || null : null,
+    periodoIva: conIva(tipo) ? v('periodoIva') : mesDe(v('fechaCompra') || fechaIso()),
+    comprasExentas: exentas ?? 0,
+    percepcion: conIva(tipo) && form.elements.percepcion.checked,
+    ...leerRenta(),
+    detalle: [
+      // Una nota no lleva productos: aunque haya quedado alguno en la lista, no se manda
+      ...(nota ? [] : estado.lineas.map((l) => ({ idProducto: l.producto.idProducto, cantidad: comoNumero(l.cantidad), costoUnitario: comoNumero(l.costo) }))),
+      ...estado.gastos.map((g) => ({ clave: g.clave, descripcion: g.descripcion.trim().replace(/\s+/g, ' '), cantidad: 1, costoUnitario: comoNumero(g.monto) })),
+    ],
   };
   const errores = {};
   if (!datos.idProveedor) errores.idProveedor = 'Elija el proveedor.';
   if (!datos.fechaCompra) errores.fechaCompra = 'Escriba la fecha del documento.';
   else if (datos.fechaCompra > fechaIso()) errores.fechaCompra = 'No puede ser una fecha futura.';
-  if (!datos.numeroDocumentoProveedor && datos.tipoDocumentoProveedor !== 'OTRO') errores.numeroDocumentoProveedor = 'Escriba el número que viene en el documento.';
-  if (!datos.detalle.length) errores.agregar = 'Agregue al menos un producto.';
-  for (const d of datos.detalle) {
-    if (!cantidadValida(d.cantidad)) errores[`cantidad-${d.idProducto}`] = 'La cantidad es un entero de 1 a 9999.';
-    if (!costoValido(d.costoUnitario)) errores[`costo-${d.idProducto}`] = 'Escriba el costo sin IVA (hasta 4 decimales).';
+  if (!datos.numeroDocumentoProveedor && tipo !== 'OTRO') errores.numeroDocumentoProveedor = 'Escriba el número que viene en el documento.';
+  if (pideCodigo && !datos.codigoGeneracionProveedor) {
+    errores.codigoGeneracionProveedor = v('codigoGeneracionProveedor') ? 'Revise el código: son 32 letras y números (A a F, 0 a 9) con 4 guiones.' : 'Copie el código de generación del documento.';
   }
+  if (nota && !datos.idCompraRelacionada) errores.idCompraRelacionada = 'Elija el crédito fiscal que corrige esta nota.';
+  if (v('comprasExentas') && !montoValido(exentas)) errores.comprasExentas = 'Escriba un monto de hasta 2 decimales.';
+  if (!datos.detalle.length) {
+    if (nota) errores.agregarGasto = 'Agregue al menos un concepto.';
+    else errores.agregar = 'Agregue al menos un producto o un gasto.';
+  }
+  for (const d of datos.detalle) {
+    if (d.idProducto) {
+      if (!cantidadValida(d.cantidad)) errores[`cantidad-${d.idProducto}`] = 'La cantidad es un entero de 1 a 9999.';
+      if (!costoValido(d.costoUnitario)) errores[`costo-${d.idProducto}`] = 'Escriba el costo sin IVA (hasta 4 decimales).';
+    } else {
+      if (!d.descripcion) errores[`descripcion-${d.clave}`] = 'Escriba qué se pagó.';
+      if (!montoValido(d.costoUnitario) || !d.costoUnitario) errores[`monto-${d.clave}`] = 'Escriba el monto sin IVA (hasta 2 decimales).';
+    }
+  }
+  datos.detalle = datos.detalle.map(({ clave, ...d }) => d);
   return { datos, errores };
 }
 
@@ -755,10 +1032,12 @@ async function enviarCompra(evento) {
     const compra = await registrarCompra(datos);
     estado.sucio = false;
     estado.lineas = [];
+    estado.gastos = [];
     cambiarVista('compras');
     cargarAvisoBajoMinimo().catch(() => {});
     recargarProveedores();
-    await mostrarCompra(compra.idCompra, `Compra ${compra.numeroCompra} guardada. La existencia ya subió.`);
+    const subio = compra.detalle.some((d) => d.idProducto) ? ' La existencia ya subió.' : '';
+    await mostrarCompra(compra.idCompra, `Compra ${compra.numeroCompra} guardada.${subio}`);
   } catch (error) {
     if (error.detalle?.campos) mostrarErrores(form, error.detalle.campos);
     const existente = error.detalle?.idCompraExistente;
@@ -781,17 +1060,26 @@ function eventosRegistrar() {
       return;
     }
     estado.sucio = true;
+    const nombre = e.target.name;
     if ((campoLinea === 'cantidad' || campoLinea === 'costo') && id) {
       const linea = estado.lineas.find((l) => l.producto.idProducto === Number(id));
       linea[campoLinea] = e.target.value;
       estado.idLineaActual = linea.producto.idProducto;
       actualizarLinea(linea);
     }
-    if (['idProveedor', 'fechaCompra', 'tipoDocumentoProveedor'].includes(e.target.name)) {
-      $('ayuda-idProveedor').innerHTML = ayudaProveedor(form);
-      if (e.target.name === 'tipoDocumentoProveedor') {
-        $('etiqueta-documento').innerHTML = `${etiquetaDocumento(e.target.value)} ${e.target.value === 'OTRO' ? '<span class="opcional">opcional</span>' : '<span class="text-estado-error" aria-hidden="true">*</span>'}`;
-      }
+    if ((campoLinea === 'descripcion' || campoLinea === 'monto') && id) {
+      estado.gastos.find((g) => g.clave === id)[campoLinea] = e.target.value;
+    }
+    if (['clasificacionRenta', 'tipoCostoGasto', 'tipoOperacionRenta', 'sectorRenta'].includes(nombre)) {
+      estado.rentaTocada = true;
+      // Al pasar de costo a gasto cambian los tipos que se pueden elegir
+      if (nombre === 'clasificacionRenta') form.elements.tipoCostoGasto.innerHTML = opciones(TIPOS_COSTO_GASTO[e.target.value], null);
+    }
+    if (nombre === 'idCompraRelacionada') rentaDeRelacionada(e.target.value).catch(() => {});
+    if (['idProveedor', 'fechaCompra', 'tipoDocumentoProveedor', 'claseImpreso'].includes(nombre)) {
+      if (nombre === 'idProveedor' || nombre === 'tipoDocumentoProveedor') estado.rentaRelacionada = null;
+      pintarDocumento();
+      return;
     }
     pintarResumen();
   });
@@ -824,6 +1112,14 @@ function eventosRegistrar() {
         estado.sucio = true;
         pintarLineas();
         $('f-agregar').focus();
+        break;
+      case 'agregar-gasto':
+        agregarGasto();
+        break;
+      case 'quitar-gasto':
+        estado.gastos = estado.gastos.filter((g) => g.clave !== boton.dataset.id);
+        estado.sucio = true;
+        pintarGastos();
         break;
       case 'cancelar-compra':
         if (!sePuedeSalir()) return;

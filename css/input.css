@@ -147,6 +147,10 @@
   .fila-pr { @apply grid grid-cols-[minmax(0,1fr)_96px] items-center gap-3 px-4 @md:grid-cols-[minmax(0,1fr)_88px_104px] @2xl:grid-cols-[minmax(0,1fr)_180px_88px_112px]; }
   /* Línea de una compra: en celular, el producto arriba y cantidad | costo | subtotal abajo */
   .fila-linea { @apply grid grid-cols-[80px_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 border-b border-neutro-100 py-3 md:grid-cols-[minmax(0,1fr)_88px_136px_96px_32px]; }
+  /* Libros de IVA: fecha, documento, dos montos y total. Angosto: fecha, documento y total */
+  .fila-iva { @apply grid grid-cols-[64px_minmax(0,1fr)_96px] items-center gap-3 px-4 @lg:grid-cols-[72px_minmax(0,1fr)_112px_112px_112px]; }
+  /* Gasto de una compra (sin producto): qué se pagó, monto sin IVA, quitar */
+  .fila-gasto { @apply grid grid-cols-[minmax(0,1fr)_112px_32px] items-start gap-x-3 gap-y-1 border-b border-neutro-100 py-3 md:grid-cols-[minmax(0,1fr)_136px_32px]; }
 
   /* Selector de vista (Compras | Proveedores) */
   .segmento { @apply inline-flex gap-1 rounded-medio bg-neutro-200 p-1; }

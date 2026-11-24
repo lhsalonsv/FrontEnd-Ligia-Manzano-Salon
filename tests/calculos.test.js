@@ -32,7 +32,7 @@ test('se redondea primero la base sin IVA, como en tb_comisiones', () => {
 test('totales de una compra: valores del mockup de Compras', () => {
   // Registrar: 12 × 7.00 + 6 × 4.50 + 8 × 3.40
   assert.deepEqual(totalesCompra([{ cantidad: 12, costoUnitario: 7 }, { cantidad: 6, costoUnitario: 4.5 }, { cantidad: 8, costoUnitario: 3.4 }], 13),
-    { subtotales: [84, 27, 27.2], subtotalSinIva: 138.2, iva: 17.97, total: 156.17 });
+    { subtotales: [84, 27, 27.2], subtotalSinIva: 138.2, comprasExentas: 0, iva: 17.97, ivaPercibido: 0, total: 156.17 });
   // C-0157: 12 × 6.80 + 12 × 6.80 + 6 × 9.50
   const c157 = totalesCompra([{ cantidad: 12, costoUnitario: 6.8 }, { cantidad: 12, costoUnitario: 6.8 }, { cantidad: 6, costoUnitario: 9.5 }], 13);
   assert.equal(c157.iva, 28.63);
@@ -41,4 +41,18 @@ test('totales de una compra: valores del mockup de Compras', () => {
   assert.equal(totalesCompra([{ cantidad: 3, costoUnitario: 2.3333 }], 13).subtotalSinIva, 7);
   // Factura de consumidor final: sin crédito fiscal
   assert.equal(totalesCompra([{ cantidad: 2, costoUnitario: 5 }], 13, 'FACTURA').iva, 0);
+});
+
+test('compra con parte exenta, percepción del 1 % y nota de crédito (libro de compras)', () => {
+  // Igual que prueba_1.3.sql: 40.00 gravado + 10.00 exento + 5.20 IVA = 55.20
+  assert.deepEqual(totalesCompra([{ cantidad: 1, costoUnitario: 40 }], 13, 'CCF', { exentas: 10 }),
+    { subtotales: [40], subtotalSinIva: 40, comprasExentas: 10, iva: 5.2, ivaPercibido: 0, total: 55.2 });
+  // Gran contribuyente: 250.00 + 32.50 IVA + 2.50 percepción
+  const percibida = totalesCompra([{ cantidad: 10, costoUnitario: 25 }], 13, 'CCF', { percepcion: true });
+  assert.equal(percibida.ivaPercibido, 2.5);
+  assert.equal(percibida.total, 285);
+  // La nota de crédito del proveedor también lleva IVA (resta crédito fiscal)
+  assert.equal(totalesCompra([{ cantidad: 1, costoUnitario: 10 }], 13, 'NC').iva, 1.3);
+  // Sin crédito fiscal no hay percepción que acreditar
+  assert.equal(totalesCompra([{ cantidad: 1, costoUnitario: 200 }], 13, 'FACTURA', { percepcion: true }).ivaPercibido, 0);
 });

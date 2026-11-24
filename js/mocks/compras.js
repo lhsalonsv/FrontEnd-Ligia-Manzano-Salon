@@ -31,6 +31,18 @@ export const PROVEEDORES_PRUEBA = [
     nit: '00000000000051', nrc: '0000051', contactoNombre: null, telefono: null, correo: null,
     direccion: null, diasCredito: 0, notas: 'Cerró su bodega en San Salvador.', activo: false,
   },
+  // Proveedores de gastos del local (no venden productos): sus compras no crean lotes
+  {
+    idProveedor: 6, nombreComercial: 'Energía del Valle', razonSocial: 'Distribuidora Eléctrica del Valle de Ejemplo, S.A. de C.V.',
+    nit: '00000000000061', nrc: '0000061', contactoNombre: null, telefono: '7000-0036', correo: null,
+    direccion: null, diasCredito: 0, notas: 'Recibo de energía: llega como crédito fiscal electrónico.', activo: true,
+  },
+  {
+    // Persona natural: su NIT es el DUI (9 dígitos), así sale en la columna DUI del anexo de compras
+    idProveedor: 7, nombreComercial: 'Mantenimiento Ejemplo', razonSocial: 'Persona Natural de Ejemplo',
+    nit: '000000071', nrc: '0000071', contactoNombre: null, telefono: '7000-0037', correo: null,
+    direccion: null, diasCredito: 0, notas: 'Revisa secadores y planchas cada mes.', activo: true,
+  },
 ];
 
 /** Qué proveedor surte cada marca del inventario de prueba (idMarca → idProveedor). */

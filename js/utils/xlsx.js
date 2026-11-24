@@ -4,7 +4,7 @@
  * Se usa en vez de CSV porque Excel separa un CSV según la configuración regional de Windows
  * (coma o punto y coma) y, si no coincide, pone todo en una columna. Prueba: npm test
  *
- * Alcance a propósito: una hoja, solo texto, cabecera en negrita, fija y con filtro. El ZIP va sin comprimir
+ * Alcance a propósito: una hoja de texto y números, cabecera en negrita, fija y con filtro. El ZIP va sin comprimir
  * ("stored"); para unos cientos de filas pesa poco.
  */
 
@@ -22,10 +22,19 @@ export function letraColumna(i) {
   return letras;
 }
 
-function hojaXml(filas, anchos) {
+/**
+ * Una celda. Los números van como número (Excel los suma y filtra) con formato 1,234.56;
+ * lo demás como texto. Estilos de styles.xml: 1 texto en negrita, 2 número, 3 número en negrita.
+ */
+function celda(valor, ref, negrita) {
+  if (typeof valor === 'number' && Number.isFinite(valor)) return `<c r="${ref}" s="${negrita ? 3 : 2}"><v>${valor}</v></c>`;
+  return `<c r="${ref}" t="inlineStr"${negrita ? ' s="1"' : ''}><is><t xml:space="preserve">${xml(valor)}</t></is></c>`;
+}
+
+function hojaXml(filas, anchos, totales) {
   const ultima = `${letraColumna(Math.max(0, filas[0].length - 1))}${filas.length}`;
   const celdas = filas.map((fila, f) => `<row r="${f + 1}">${fila.map((valor, c) =>
-    `<c r="${letraColumna(c)}${f + 1}" t="inlineStr"${f === 0 ? ' s="1"' : ''}><is><t xml:space="preserve">${xml(valor)}</t></is></c>`).join('')}</row>`).join('');
+    celda(valor, `${letraColumna(c)}${f + 1}`, f === 0 || (totales && f === filas.length - 1))).join('')}</row>`).join('');
   const columnas = anchos.length ? `<cols>${anchos.map((a, i) => `<col min="${i + 1}" max="${i + 1}" width="${a}" customWidth="1"/>`).join('')}</cols>` : '';
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
@@ -34,7 +43,7 @@ function hojaXml(filas, anchos) {
     + `${columnas}<sheetData>${celdas}</sheetData><autoFilter ref="A1:${ultima}"/></worksheet>`;
 }
 
-function archivos(filas, hoja, anchos) {
+function archivos(filas, hoja, anchos, totales) {
   const tipo = 'application/vnd.openxmlformats-';
   return {
     '[Content_Types].xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
@@ -55,9 +64,11 @@ function archivos(filas, hoja, anchos) {
       + '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>'
       + '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
       + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-      + '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs>'
+      // numFmtId 4 es el formato que Excel ya trae: #,##0.00
+      + '<cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
+      + '<xf numFmtId="4" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="4" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyNumberFormat="1"/></cellXfs>'
       + '</styleSheet>',
-    'xl/worksheets/sheet1.xml': hojaXml(filas, anchos),
+    'xl/worksheets/sheet1.xml': hojaXml(filas, anchos, totales),
   };
 }
 
@@ -114,12 +125,13 @@ export function zip(entradas) {
 }
 
 /**
- * @param {string[][]} filas  la primera es la cabecera
- * @param {{hoja?: string, anchos?: number[]}} [opciones]  anchos en caracteres, uno por columna
+ * @param {(string|number)[][]} filas  la primera es la cabecera; los números quedan como número
+ * @param {{hoja?: string, anchos?: number[], totales?: boolean}} [opciones]  anchos en caracteres, uno por columna;
+ *        totales: la última fila es de totales y va en negrita
  * @returns {Uint8Array} bytes del .xlsx
  */
-export function crearXlsx(filas, { hoja = 'Hoja1', anchos = [] } = {}) {
-  return zip(archivos(filas, hoja, anchos));
+export function crearXlsx(filas, { hoja = 'Hoja1', anchos = [], totales = false } = {}) {
+  return zip(archivos(filas, hoja, anchos, totales));
 }
 
 export const TIPO_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';

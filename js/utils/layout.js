@@ -37,6 +37,7 @@ const MENU = [
   [
     { id: 'facturacion', texto: 'Facturación', href: 'facturacion.html', listo: false },
     { id: 'reportes', texto: 'Reportes', href: 'reportes.html', listo: false },
+    { id: 'libros-iva', texto: 'Libros de IVA', href: 'libros-iva.html', listo: true, roles: ['ADMINISTRADOR', 'CONTADOR', 'AUDITOR'] },
     { id: 'bitacora', texto: 'Bitácora', href: 'bitacora.html', listo: true },
     // Lo único ya decidido de los permisos: Configuración es solo de la administradora (mockup)
     { id: 'configuracion', texto: 'Configuración', href: 'configuracion.html', listo: true, roles: ['ADMINISTRADOR'] },

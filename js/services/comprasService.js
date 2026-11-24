@@ -9,12 +9,15 @@
  *   GET   /api/compras?buscar=&filtro=todas|este-mes&idProveedor=&pagina=0&tamano=50
  *         → { contenido: [resumen], totalElementos, conteos, mes }
  *   GET   /api/compras/{id}                → compra + detalle
- *   POST  /api/compras                     { idProveedor, fechaCompra, tipoDocumentoProveedor, numeroDocumentoProveedor, detalle }
+ *   POST  /api/compras                     { idProveedor, fechaCompra, tipoDocumentoProveedor, numeroDocumentoProveedor,
+ *                                            claseDocumento, codigoGeneracionProveedor, idCompraRelacionada, periodoIva,
+ *                                            comprasExentas, percepcion, tipoOperacionRenta, clasificacionRenta, sectorRenta,
+ *                                            tipoCostoGasto, detalle: [{ idProducto, cantidad, costoUnitario } | { descripcion, cantidad, costoUnitario }] }
  */
 import { DATOS_PRUEBA } from '../config.js';
 import { authFetch, ApiError } from '../utils/authFetch.js';
 import { obtenerSesion } from '../utils/session.js';
-import { totalesCompra, centavos } from '../utils/calculos.js';
+import { totalesCompra, centavos, DOCUMENTOS_CON_IVA } from '../utils/calculos.js';
 import { fechaIso } from '../utils/formato.js';
 import { PROVEEDORES_PRUEBA, PROVEEDOR_POR_MARCA } from '../mocks/compras.js';
 import { PRODUCTOS_PRUEBA, PARAMETROS_INVENTARIO_PRUEBA } from '../mocks/inventario.js';
@@ -75,27 +78,66 @@ function buscarProveedor(idProveedor) {
   return p;
 }
 
-/** Las compras de prueba salen de los lotes del inventario: cada lote con numeroCompra es una línea. */
+/** Primer día del mes de una fecha ISO: el mes del crédito fiscal (tb_compras.periodo_iva). */
+export const mesDe = (fechaIsoTexto) => `${fechaIsoTexto.slice(0, 7)}-01`;
+/** Código de generación de prueba, siempre el mismo para el mismo número. */
+const codigoPrueba = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+/** Clasificación para renta que el backend propone: productos para vender = costo; lo demás = gasto de administración. */
+export const RENTA_PRODUCTOS = { tipoOperacionRenta: 1, clasificacionRenta: 1, sectorRenta: 4, tipoCostoGasto: 5 };
+export const RENTA_GASTOS = { tipoOperacionRenta: 1, clasificacionRenta: 2, sectorRenta: 4, tipoCostoGasto: 2 };
+
+/** Las compras de productos salen de los lotes del inventario: cada lote con numeroCompra es una línea. */
 function armarCompras() {
   const porNumero = new Map();
   for (const producto of PRODUCTOS_PRUEBA) {
     for (const lote of producto.lotes.filter((l) => l.numeroCompra)) {
       if (!porNumero.has(lote.numeroCompra)) {
+        const n = Number(lote.numeroCompra.slice(2));
         porNumero.set(lote.numeroCompra, {
-          idCompra: Number(lote.numeroCompra.slice(2)), numeroCompra: lote.numeroCompra,
+          idCompra: n, numeroCompra: lote.numeroCompra,
           idProveedor: PROVEEDOR_POR_MARCA[producto.idMarca], fechaCompra: lote.fechaIngreso.slice(0, 10),
           tipoDocumentoProveedor: 'CCF', numeroDocumentoProveedor: `DTE-03-M001P001-00000000000${lote.numeroCompra.slice(2)}`,
+          claseDocumento: 4, codigoGeneracionProveedor: codigoPrueba(n), idCompraRelacionada: null,
+          periodoIva: mesDe(lote.fechaIngreso), comprasExentas: 0, percepcion: false, ...RENTA_PRODUCTOS,
           estado: 'REGISTRADA', nombreUsuario: 'Ligia Manzano', creadoEn: lote.fechaIngreso, lineas: [],
         });
       }
       porNumero.get(lote.numeroCompra).lineas.push({ idProducto: producto.idProducto, idLote: lote.idLote, cantidad: lote.cantidadInicial, costoUnitario: lote.costoUnitario });
     }
   }
-  return [...porNumero.values()];
+  const productos = [...porNumero.values()];
+
+  // Gastos del local y una nota de crédito, en este mes (para que salgan en el libro de compras)
+  const hoy = fechaIso();
+  const enElMes = (dia) => (hoy.slice(8) >= dia ? `${hoy.slice(0, 8)}${dia}` : hoy);
+  let n = Math.max(...productos.map((c) => c.idCompra));
+  const gasto = (idProveedor, fecha, descripcion, monto, extra = {}) => {
+    n += 1;
+    return {
+      idCompra: n, numeroCompra: `C-${String(n).padStart(4, '0')}`, idProveedor, fechaCompra: fecha,
+      tipoDocumentoProveedor: 'CCF', numeroDocumentoProveedor: `DTE-03-M001P001-0000000000${String(n).padStart(5, '0')}`,
+      claseDocumento: 4, codigoGeneracionProveedor: codigoPrueba(n), idCompraRelacionada: null,
+      periodoIva: mesDe(fecha), comprasExentas: 0, percepcion: false, ...RENTA_GASTOS,
+      estado: 'REGISTRADA', nombreUsuario: 'Ligia Manzano', creadoEn: `${fecha}T15:00:00.000Z`,
+      lineas: [{ descripcion, cantidad: 1, costoUnitario: monto }], ...extra,
+    };
+  };
+  const ultima = productos.sort((a, b) => b.fechaCompra.localeCompare(a.fechaCompra))[0];
+  return [
+    ...productos,
+    gasto(6, enElMes('05'), 'Energía eléctrica del local', 85.4),
+    gasto(7, enElMes('10'), 'Mantenimiento de secadores y planchas', 40),
+    gasto(ultima.idProveedor, hoy, 'Descuento por pronto pago', 5, {
+      tipoDocumentoProveedor: 'NC', numeroDocumentoProveedor: `DTE-05-M001P001-0000000000${String(n + 1).padStart(5, '0')}`,
+      idCompraRelacionada: ultima.idCompra, ...RENTA_PRODUCTOS,
+    }),
+  ];
 }
 const compras = armarCompras();
 
-const totales = (c) => totalesCompra(c.lineas, ivaPct, c.tipoDocumentoProveedor);
+const totales = (c) => totalesCompra(c.lineas, ivaPct, c.tipoDocumentoProveedor, { exentas: c.comprasExentas, percepcion: c.percepcion });
+/** La nota de crédito resta: en el total del mes y en los libros. */
+const signo = (c) => (c.tipoDocumentoProveedor === 'NC' ? -1 : 1);
 const nombreProveedor = (id) => buscarProveedor(id).nombreComercial;
 const masNuevaPrimero = (a, b) => b.fechaCompra.localeCompare(a.fechaCompra) || b.idCompra - a.idCompra;
 const vence = (c) => {
@@ -103,12 +145,15 @@ const vence = (c) => {
   return dias ? fechaIso(c.fechaCompra, dias) : null;
 };
 
+const deProducto = (c) => c.lineas.filter((l) => l.idProducto);
+
 function aResumen(c) {
   return {
     idCompra: c.idCompra, numeroCompra: c.numeroCompra, fechaCompra: c.fechaCompra, idProveedor: c.idProveedor,
     nombreProveedor: nombreProveedor(c.idProveedor), tipoDocumentoProveedor: c.tipoDocumentoProveedor,
-    numeroDocumentoProveedor: c.numeroDocumentoProveedor, productos: c.lineas.length,
-    unidades: c.lineas.reduce((s, l) => s + l.cantidad, 0), total: totales(c).total, estado: c.estado,
+    numeroDocumentoProveedor: c.numeroDocumentoProveedor, productos: deProducto(c).length,
+    unidades: deProducto(c).reduce((s, l) => s + l.cantidad, 0), gastos: c.lineas.length - deProducto(c).length,
+    primerGasto: c.lineas.find((l) => !l.idProducto)?.descripcion ?? null, total: totales(c).total, estado: c.estado,
   };
 }
 
@@ -126,7 +171,7 @@ async function listarComprasPrueba(buscar, filtro, idProveedor, pagina) {
     contenido: filtradas.slice(pagina * TAMANO_PAGINA, (pagina + 1) * TAMANO_PAGINA),
     totalElementos: filtradas.length,
     conteos: { todas: resumenes.length, 'este-mes': resumenes.filter(delMes).length },
-    mes: { cantidad: deEsteMes.length, total: centavos(deEsteMes.reduce((s, r) => s + r.total, 0)) },
+    mes: { cantidad: deEsteMes.length, total: centavos(deEsteMes.reduce((s, r) => s + signo(r) * r.total, 0)) },
   };
 }
 
@@ -134,11 +179,14 @@ async function fichaCompraPrueba(idCompra) {
   await esperar();
   const c = compras.find((x) => x.idCompra === Number(idCompra));
   if (!c) throw new ApiError(404, 'No se encontró la compra.');
-  const { subtotales, subtotalSinIva, iva, total } = totales(c);
-  const { lineas, ...datos } = c;
+  const { subtotales, subtotalSinIva, comprasExentas, iva, ivaPercibido, total } = totales(c);
+  const { lineas, percepcion, ...datos } = c;
+  const relacionada = compras.find((x) => x.idCompra === c.idCompraRelacionada);
   return {
-    ...structuredClone(datos), nombreProveedor: nombreProveedor(c.idProveedor), subtotalSinIva, iva, total, fechaVencimientoPago: vence(c),
+    ...structuredClone(datos), nombreProveedor: nombreProveedor(c.idProveedor), subtotalSinIva, comprasExentas, iva, ivaPercibido, total,
+    numeroCompraRelacionada: relacionada?.numeroCompra ?? null, fechaVencimientoPago: vence(c),
     detalle: lineas.map((l, i) => {
+      if (!l.idProducto) return { idProducto: null, descripcion: l.descripcion, cantidad: l.cantidad, costoUnitario: l.costoUnitario, subtotal: subtotales[i] };
       const producto = PRODUCTOS_PRUEBA.find((p) => p.idProducto === l.idProducto);
       return {
         idProducto: l.idProducto, nombreProducto: producto.nombreProducto, cantidad: l.cantidad, costoUnitario: l.costoUnitario,
@@ -148,11 +196,34 @@ async function fichaCompraPrueba(idCompra) {
   };
 }
 
-async function registrarPrueba({ idProveedor, fechaCompra, tipoDocumentoProveedor, numeroDocumentoProveedor, detalle }) {
+/** Las mismas reglas que los checks de tb_compras (migración 1.3): la API responde 400 con el campo. */
+function revisarDocumento(d) {
+  const campos = {};
+  const conIva = DOCUMENTOS_CON_IVA.includes(d.tipoDocumentoProveedor);
+  if (conIva && !d.numeroDocumentoProveedor) campos.numeroDocumentoProveedor = 'Escriba el número de control del documento.';
+  if (conIva && d.claseDocumento === 4 && !/^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i.test(d.codigoGeneracionProveedor ?? '')) {
+    campos.codigoGeneracionProveedor = 'El código de generación tiene 36 caracteres.';
+  }
+  if (['NC', 'ND'].includes(d.tipoDocumentoProveedor) !== Boolean(d.idCompraRelacionada)) campos.idCompraRelacionada = 'Elija la compra que corrige.';
+  if (['NC', 'ND'].includes(d.tipoDocumentoProveedor) && d.detalle.some((l) => l.idProducto)) campos.agregar = 'Una nota no lleva productos: la devolución se registra con un ajuste en Inventario.';
+  const minimo = mesDe(d.fechaCompra);
+  const tope = new Date(`${minimo}T00:00:00`);
+  tope.setMonth(tope.getMonth() + 3);
+  if (!d.periodoIva?.endsWith('-01') || d.periodoIva < minimo || d.periodoIva > fechaIso(tope)) {
+    campos.periodoIva = 'El crédito fiscal se declara en el mes del documento o hasta 3 meses después.';
+  }
+  return campos;
+}
+
+async function registrarPrueba(d) {
   await esperar();
-  const proveedor = buscarProveedor(idProveedor);
+  const proveedor = buscarProveedor(d.idProveedor);
   if (!proveedor.activo) throw new ApiError(400, 'Ese proveedor está inactivo.', { campos: { idProveedor: 'Está inactivo.' } });
-  const repetida = numeroDocumentoProveedor && compras.find((c) => c.idProveedor === proveedor.idProveedor && c.numeroDocumentoProveedor === numeroDocumentoProveedor);
+  const campos = revisarDocumento(d);
+  if (Object.keys(campos).length) throw new ApiError(400, 'Revise los datos del documento.', { campos });
+  const viva = (c) => c.estado !== 'ANULADA';
+  const repetida = compras.filter(viva).find((c) => (d.numeroDocumentoProveedor && c.idProveedor === proveedor.idProveedor && c.numeroDocumentoProveedor === d.numeroDocumentoProveedor)
+    || (d.codigoGeneracionProveedor && c.codigoGeneracionProveedor?.toUpperCase() === d.codigoGeneracionProveedor.toUpperCase()));
   if (repetida) {
     throw new ApiError(409, `Ese documento ya se registró en la compra ${repetida.numeroCompra}.`, {
       codigo: 'COMPRA_DUPLICADA', campos: { numeroDocumentoProveedor: 'Ya está registrado.' }, idCompraExistente: repetida.idCompra,
@@ -162,18 +233,28 @@ async function registrarPrueba({ idProveedor, fechaCompra, tipoDocumentoProveedo
   const numeroCompra = `C-${String(idCompra).padStart(4, '0')}`;
   const ahora = new Date().toISOString();
   let idLote = Math.max(...PRODUCTOS_PRUEBA.flatMap((p) => p.lotes.map((l) => l.idLote)));
-  const lineas = detalle.map(({ idProducto, cantidad, costoUnitario }) => {
+  // Solo las líneas de producto crean lote y movimiento de kardex; un gasto no toca el inventario
+  const lineas = d.detalle.map(({ idProducto, descripcion, cantidad, costoUnitario }) => {
+    if (!idProducto) return { descripcion, cantidad, costoUnitario };
     const producto = PRODUCTOS_PRUEBA.find((p) => p.idProducto === idProducto);
     producto.lotes.push({ idLote: ++idLote, fechaIngreso: ahora, costoUnitario, cantidadInicial: cantidad, cantidadDisponible: cantidad, numeroCompra });
     producto.movimientos.push({ fechaHora: ahora, tipo: 'ENTRADA_COMPRA', cantidad, referencia: numeroCompra, motivo: null });
     return { idProducto, idLote, cantidad, costoUnitario };
   });
   compras.push({
-    idCompra, numeroCompra, idProveedor: proveedor.idProveedor, fechaCompra, tipoDocumentoProveedor,
-    numeroDocumentoProveedor: numeroDocumentoProveedor || null, estado: 'REGISTRADA',
-    nombreUsuario: obtenerSesion()?.usuario.nombreCompleto ?? '', creadoEn: ahora, lineas,
+    idCompra, numeroCompra, idProveedor: proveedor.idProveedor, fechaCompra: d.fechaCompra, tipoDocumentoProveedor: d.tipoDocumentoProveedor,
+    numeroDocumentoProveedor: d.numeroDocumentoProveedor || null, claseDocumento: d.claseDocumento,
+    codigoGeneracionProveedor: d.codigoGeneracionProveedor?.toUpperCase() || null, idCompraRelacionada: d.idCompraRelacionada || null,
+    periodoIva: d.periodoIva, comprasExentas: d.comprasExentas || 0, percepcion: Boolean(d.percepcion),
+    tipoOperacionRenta: d.tipoOperacionRenta, clasificacionRenta: d.clasificacionRenta, sectorRenta: d.sectorRenta, tipoCostoGasto: d.tipoCostoGasto,
+    estado: 'REGISTRADA', nombreUsuario: obtenerSesion()?.usuario.nombreCompleto ?? '', creadoEn: ahora, lineas,
   });
   return fichaCompraPrueba(idCompra);
+}
+
+/** Para el libro de compras de prueba (librosIvaService): las compras con su proveedor y sus totales. */
+export function comprasDePrueba() {
+  return compras.map((c) => ({ ...c, proveedor: buscarProveedor(c.idProveedor), ...totales(c) }));
 }
 
 function comprasDe(idProveedor) {
@@ -198,7 +279,8 @@ async function fichaProveedorPrueba(idProveedor) {
   return {
     ...structuredClone(p),
     ultimasCompras: suyas.slice(0, 3).map((c) => ({
-      idCompra: c.idCompra, numeroCompra: c.numeroCompra, fechaCompra: c.fechaCompra, productos: c.lineas.length,
+      idCompra: c.idCompra, numeroCompra: c.numeroCompra, fechaCompra: c.fechaCompra, productos: deProducto(c).length,
+      gastos: c.lineas.length - deProducto(c).length, tipoDocumentoProveedor: c.tipoDocumentoProveedor,
       total: totales(c).total, fechaVencimientoPago: vence(c),
     })),
     comprasAnio: { cantidad: anio.length, total: centavos(anio.reduce((s, c) => s + totales(c).total, 0)) },

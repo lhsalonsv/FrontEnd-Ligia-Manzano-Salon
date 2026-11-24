@@ -50,3 +50,16 @@ test('el .xlsx trae las partes que Excel exige y el texto escapado', () => {
   assert.match(hoja, /state="frozen"/);
   assert.match(archivos['xl/workbook.xml'], /<sheet name="Bitácora 2026-11-21"/);
 });
+
+test('los números quedan como número con 2 decimales y la fila de totales en negrita', () => {
+  const archivos = leerZip(crearXlsx([
+    ['Fecha', 'Gravado', 'IVA'],
+    ['05/11/2026', 200, 26],
+    ['Totales', 1234.5, 160.49],
+  ], { totales: true }));
+  const hoja = archivos['xl/worksheets/sheet1.xml'];
+  assert.match(hoja, /<c r="B2" s="2"><v>200<\/v><\/c>/);           // número con formato #,##0.00
+  assert.match(hoja, /<c r="A3" t="inlineStr" s="1">/);             // "Totales" en negrita
+  assert.match(hoja, /<c r="B3" s="3"><v>1234.5<\/v><\/c>/);        // total en negrita
+  assert.match(archivos['xl/styles.xml'], /<cellXfs count="4">.*numFmtId="4"/);
+});

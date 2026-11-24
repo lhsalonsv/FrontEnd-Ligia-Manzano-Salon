@@ -35,7 +35,8 @@ clientes.html              Clientes: lista, ficha y formulario (nuevo / editar)
 servicios.html             Servicios: catálogo por especialidad, detalle y formulario
 empleados.html             Empleados: equipo, ficha, formulario con especialidades y horario, dar de baja
 inventario.html            Inventario: productos, lotes PEPS, últimos movimientos, ajuste de existencia y formulario
-compras.html               Compras: historial, registrar compra (un lote por producto) y proveedores
+compras.html               Compras: historial, registrar compra (productos con su lote, gastos del local, notas del proveedor) y proveedores
+libros-iva.html            Libros de IVA (admin, contador, auditor): los 4 anexos del F-07 del mes, archivo para Hacienda y libro en Excel
 bitacora.html              Bitácora: registros del día por módulo, persona o texto; qué cambió; exportar a Excel
 configuracion.html         Configuración (solo Administrador): negocio y Hacienda, reglas del salón, usuarios y la matriz de roles (borrador)
 css/input.css              Tema (tokens del diseño) y componentes → se compila a css/styles.css
@@ -52,7 +53,7 @@ js/utils/calculos.js       Precio sin IVA, comisión y totales de una compra (pr
 js/utils/horario.js        Horario semanal de una empleada dentro del horario del salón (probado en tests/)
 js/utils/peps.js           Lotes PEPS: existencia, valor al costo y de qué lotes sale una salida (probado en tests/)
 js/utils/panel.js          Panel derecho de las pantallas de catálogo (ficha / formulario)
-js/utils/xlsx.js           Archivo de Excel (.xlsx) sin librerías, para exportar (probado en tests/)
+js/utils/xlsx.js           Archivo de Excel (.xlsx) sin librerías, con texto y números, para exportar (probado en tests/)
 js/utils/formulario.js     Campo con etiqueta y error; mostrar errores del frontend y del backend
 docs/contrato-api.md       Acuerdo de endpoints y JSON con el backend
 vercel.json                Cabeceras de seguridad al publicar en Vercel

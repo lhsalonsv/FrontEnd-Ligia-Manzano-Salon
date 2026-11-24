@@ -27,6 +27,7 @@ export const DATOS_PRUEBA = {
   configuracion: true,
   bitacora: true,
   catalogos: true,
+  librosIva: true,
 };
 
 /** Minutos sin uso antes de cerrar la sesión (lo dice la pantalla de login). */
