@@ -8,7 +8,7 @@
  */
 import { montarLayout, NOMBRE_ROL } from '../utils/layout.js';
 import { icono } from '../utils/icons.js';
-import { escapar, dinero, fechaCorta, fechaHora, iniciales } from '../utils/formato.js';
+import { escapar, dinero, fechaCorta, fechaHora, iniciales, nitConGuiones, nrcConGuion } from '../utils/formato.js';
 import { DIAS } from '../utils/horario.js';
 import { centavos } from '../utils/calculos.js';
 import { campo, entrada, mostrarErrores } from '../utils/formulario.js';
@@ -72,13 +72,6 @@ const MATRIZ_BORRADOR = [
 const TIPOS_ESTABLECIMIENTO = [['02', 'Casa matriz'], ['01', 'Sucursal'], ['04', 'Bodega'], ['07', 'Predio o patio'], ['20', 'Otro']];
 
 const soloDigitos = (t) => String(t ?? '').replace(/\D/g, '');
-function nitConGuiones(nit) {
-  const d = soloDigitos(nit);
-  if (d.length === 14) return `${d.slice(0, 4)}-${d.slice(4, 10)}-${d.slice(10, 13)}-${d.slice(13)}`;
-  if (d.length === 9) return `${d.slice(0, 8)}-${d.slice(8)}`;
-  return d;
-}
-const nrcConGuion = (nrc) => (nrc && nrc.length > 1 ? `${nrc.slice(0, -1)}-${nrc.slice(-1)}` : nrc ?? '');
 const opciones = (pares, elegido) => pares.map(([v, t]) => `<option value="${escapar(v)}" ${String(v) === String(elegido) ? 'selected' : ''}>${escapar(t)}</option>`).join('');
 const errorCarga = (mensaje) => `<div class="aviso aviso-error">${icono('alerta')}<p>${escapar(mensaje)}</p></div>`;
 

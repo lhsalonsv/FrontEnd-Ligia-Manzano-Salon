@@ -25,7 +25,8 @@ const estado = { periodo: MES_ACTUAL, libro: 'contribuyentes', datos: null, peti
 const TIPO = { '01': 'Factura', '03': 'CCF', '05': 'NC', '06': 'ND' };
 const TIPO_LARGO = { '01': 'Factura', '03': 'Crédito fiscal', '05': 'Nota de crédito', '06': 'Nota de débito' };
 const corto = (texto, n = 4) => `…${String(texto ?? '').slice(-n)}`;
-const conSigno = (r, monto) => (r.signo === -1 ? `−${dinero(monto)}` : dinero(monto));
+const conSigno = (r, monto) => dineroFirmado((r.signo ?? 1) * monto);
+const dineroFirmado = (monto) => (monto < 0 ? `−${dinero(Math.abs(monto))}` : dinero(monto)); // anulaciones del art. 87
 const suma = (filas, campo, conSignoDe = true) => centavos(filas.reduce((s, r) => s + (conSignoDe ? (r.signo ?? 1) : 1) * (r[campo] ?? 0), 0));
 
 /**
@@ -41,26 +42,30 @@ const LIBROS = {
       conSigno(r, r.ventasGravadas), conSigno(r, r.debitoFiscal), conSigno(r, r.totalVentas)],
     totales: (f) => [suma(f, 'ventasGravadas'), suma(f, 'debitoFiscal'), suma(f, 'totalVentas')],
     excel: {
-      columnas: ['N.º', 'Fecha', 'Tipo', 'N.º de control', 'Código de generación', 'Sello de recepción', 'NIT o NRC', 'DUI', 'Cliente',
-        'Exentas', 'No sujetas', 'Gravadas', 'Débito fiscal', 'IVA retenido', 'Total'],
-      anchos: [6, 12, 16, 34, 34, 42, 16, 11, 34, 11, 11, 12, 12, 12, 12],
-      fila: (r) => [r.correlativo, r.fecha, TIPO_LARGO[r.tipoDocumento], r.numeroResolucion, r.numeroDocumento, r.serie, r.nitNrc, r.dui, r.nombre,
-        r.signo * r.ventasExentas, r.signo * r.ventasNoSujetas, r.signo * r.ventasGravadas, r.signo * r.debitoFiscal, r.signo * r.ivaRetenido, r.signo * r.totalVentas],
-      sumar: [9, 10, 11, 12, 13, 14],
+      columnas: ['N.º', 'Fecha', 'Tipo', 'N.º de control', 'Código de generación', 'Sello de recepción', 'NIT o NRC', 'NRC', 'DUI', 'Cliente',
+        'Exentas', 'No sujetas', 'Gravadas', 'Débito fiscal', 'IVA retenido', 'IVA percibido', 'Total'],
+      anchos: [6, 12, 16, 34, 34, 42, 16, 10, 11, 34, 11, 11, 12, 12, 12, 12, 12],
+      fila: (r) => [r.correlativo, r.fecha, TIPO_LARGO[r.tipoDocumento], r.numeroResolucion, r.numeroDocumento, r.serie, r.nitNrc, r.nrc, r.dui, r.nombre,
+        r.signo * r.ventasExentas, r.signo * r.ventasNoSujetas, r.signo * r.ventasGravadas, r.signo * r.debitoFiscal, r.signo * r.ivaRetenido, r.signo * r.ivaPercibido, r.signo * r.totalVentas],
+      sumar: [10, 11, 12, 13, 14, 15, 16],
     },
   },
   consumidor: {
     pestana: 'Consumidor final', titulo: 'Ventas a consumidor final', clave: 'consumidorFinal', archivo: 'ventas-cf',
     cabecera: ['Día', 'Facturas', 'Gravado con IVA', 'IVA incluido', 'Total'],
     fila: (r) => [fechaCorta(r.fecha),
-      `<b class="block font-semibold">${numero(r.documentos)} ${r.documentos === 1 ? 'factura' : 'facturas'}</b><small class="block truncate font-mono text-xs text-texto-secundario">${corto(r.delDocumento, 6)} a ${corto(r.alDocumento, 6)}</small>`,
-      dinero(r.ventasGravadas), dinero(r.ivaIncluido), dinero(r.totalVentas)],
+      r.esAnulacion
+        ? `<b class="block font-semibold">Anulación de factura ${escapar(corto(r.numeroControlDel))}</b><small class="block truncate text-13 text-texto-secundario">emitida el ${fechaCorta(r.fechaDocumento)}</small>`
+        : `<b class="block font-semibold">${numero(r.documentos)} ${r.documentos === 1 ? 'factura' : 'facturas'}</b><small class="block truncate font-mono text-xs text-texto-secundario">${escapar(r.establecimiento)} · ${escapar(corto(r.numeroControlDel, 6))} a ${escapar(corto(r.numeroControlAl, 6))}</small>`,
+      dineroFirmado(r.ventasGravadas), dineroFirmado(r.ivaIncluido), dineroFirmado(r.totalVentas)],
     totales: (f) => [suma(f, 'ventasGravadas'), suma(f, 'ivaIncluido'), suma(f, 'totalVentas')],
     excel: {
-      columnas: ['N.º', 'Fecha', 'Facturas', 'Del (código de generación)', 'Al (código de generación)', 'Exentas', 'No sujetas', 'Gravadas (con IVA)', 'IVA incluido', 'Total'],
-      anchos: [6, 12, 10, 34, 34, 11, 11, 16, 12, 12],
-      fila: (r) => [r.correlativo, r.fecha, r.documentos, r.delDocumento, r.alDocumento, r.ventasExentas, r.ventasNoSujetas, r.ventasGravadas, r.ivaIncluido, r.totalVentas],
-      sumar: [2, 5, 6, 7, 8, 9],
+      columnas: ['N.º', 'Fecha', 'Establecimiento', 'N.º de control del', 'N.º de control al', 'Facturas', 'Del (código de generación)', 'Al (código de generación)',
+        'Exentas', 'No sujetas', 'Gravadas (con IVA)', 'IVA incluido', 'Total', 'Anulación'],
+      anchos: [6, 12, 16, 34, 34, 10, 34, 34, 11, 11, 16, 12, 12, 11],
+      fila: (r) => [r.correlativo, r.fecha, r.establecimiento, r.numeroControlDel, r.numeroControlAl, r.esAnulacion ? -r.documentos : r.documentos,
+        r.delDocumento, r.alDocumento, r.ventasExentas, r.ventasNoSujetas, r.ventasGravadas, r.ivaIncluido, r.totalVentas, r.esAnulacion ? 'Sí' : ''],
+      sumar: [5, 8, 9, 10, 11, 12],
     },
   },
   compras: {
@@ -71,11 +76,11 @@ const LIBROS = {
       conSigno(r, r.comprasGravadas), conSigno(r, r.creditoFiscal), conSigno(r, r.totalDocumento)],
     totales: (f) => [suma(f, 'comprasGravadas'), suma(f, 'creditoFiscal'), suma(f, 'totalDocumento')],
     excel: {
-      columnas: ['N.º', 'Fecha', 'Tipo', 'Documento', 'NIT o NRC', 'DUI', 'Proveedor', 'Exentas', 'Gravadas', 'Crédito fiscal', 'Percepción 1 %', 'Total'],
-      anchos: [6, 12, 16, 34, 16, 11, 34, 11, 12, 13, 14, 12],
-      fila: (r) => [r.correlativo, r.fecha, TIPO_LARGO[r.tipoDocumento], r.numeroDocumento, r.nitNrc, r.dui, r.nombre,
+      columnas: ['N.º', 'Fecha', 'Tipo', 'Documento', 'NIT o NRC', 'NRC', 'DUI', 'Proveedor', 'Exentas', 'Gravadas', 'Crédito fiscal', 'Percepción 1 %', 'Total'],
+      anchos: [6, 12, 16, 34, 16, 10, 11, 34, 11, 12, 13, 14, 12],
+      fila: (r) => [r.correlativo, r.fecha, TIPO_LARGO[r.tipoDocumento], r.numeroDocumento, r.nitNrc, r.nrc, r.dui, r.nombre,
         r.signo * r.comprasExentas, r.signo * r.comprasGravadas, r.signo * r.creditoFiscal, r.signo * r.ivaPercibido, r.signo * r.totalDocumento],
-      sumar: [7, 8, 9, 10, 11],
+      sumar: [8, 9, 10, 11, 12],
     },
   },
   anulados: {
@@ -119,7 +124,9 @@ function pintarResumen(d) {
   const aviso = $('aviso');
   aviso.classList.toggle('hidden', !d.pendientes.sinSello);
   aviso.classList.toggle('flex', Boolean(d.pendientes.sinSello));
-  aviso.innerHTML = `${icono('advertencia')}<p>${d.pendientes.sinSello === 1 ? '1 documento del mes no tiene' : `${numero(d.pendientes.sinSello)} documentos del mes no tienen`} el sello de Hacienda. No salen en los libros hasta que Hacienda los acepte.</p>`;
+  aviso.innerHTML = `${icono('advertencia')}<p>${d.pendientes.sinSello === 1
+    ? '1 documento del mes está en contingencia: ya sale en el libro, pero hay que transmitirlo'
+    : `${numero(d.pendientes.sinSello)} documentos del mes están en contingencia: ya salen en el libro, pero hay que transmitirlos`} a Hacienda antes de declarar.</p>`;
 }
 
 // --- Lista del libro elegido -------------------------------------------------
@@ -146,6 +153,7 @@ function pintarLibro() {
   }
   $('descargar-csv').disabled = vacia;
   $('descargar-excel').disabled = vacia;
+  $('imprimir').disabled = vacia || estado.libro === 'anulados'; // los anulados no son un libro legal
   history.replaceState(null, '', `${location.pathname}?periodo=${estado.periodo}&libro=${estado.libro}`);
 }
 
@@ -195,7 +203,7 @@ function descargar(contenido, tipo, nombre) {
 /** El archivo para "Subir detalle" del F-07: las líneas que arma la base, sin encabezados, separadas por punto y coma. */
 function descargarCsv() {
   const libro = LIBROS[estado.libro];
-  const lineas = estado.datos[libro.clave].map((r) => r.lineaCsv);
+  const lineas = estado.datos[libro.clave].filter((r) => r.lineaCsv !== null).map((r) => r.lineaCsv); // las anulaciones del art. 87 no van: el anexo no admite negativos
   // ponytail: UTF-8 sin BOM. Si el portal de Hacienda rechaza tildes, cambiar a Windows-1252 (pendiente de la primera carga real).
   descargar(`${lineas.join('\r\n')}\r\n`, 'text/csv;charset=utf-8', `${libro.archivo}-${estado.periodo}.csv`);
 }
@@ -226,6 +234,7 @@ if (sesion && !ROLES.includes(sesion.usuario.rol)) {
   $('mes').max = MES_ACTUAL;
   $('descargar-csv').innerHTML = `${icono('descargar')}Archivo para Hacienda`;
   $('descargar-excel').innerHTML = `${icono('descargar')}Libro en Excel`;
+  $('imprimir').innerHTML = `${icono('imprimir')}Imprimir libro`;
   $('nota').textContent = 'Hecho según el manual de anexos del F-07 de Hacienda. Las notas de crédito restan. Antes de subir un archivo, revísalo con la contadora.';
 
   $('mes-anterior').addEventListener('click', () => { estado.periodo = sumarMeses(estado.periodo, -1); cargar(); });
@@ -243,6 +252,7 @@ if (sesion && !ROLES.includes(sesion.usuario.rol)) {
   });
   $('descargar-csv').addEventListener('click', descargarCsv);
   $('descargar-excel').addEventListener('click', descargarExcel);
+  $('imprimir').addEventListener('click', () => window.open(`libro-iva-imprimir.html?periodo=${estado.periodo}&libro=${estado.libro}`, '_blank'));
 
   pintarPestanas();
   cargar();

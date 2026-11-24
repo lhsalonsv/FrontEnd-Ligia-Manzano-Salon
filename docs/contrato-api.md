@@ -565,18 +565,25 @@ Cada lista son las filas de su vista, con las columnas en camelCase y en el orde
 ```json
 {
   "periodo": "2026-11",
+  "emisor": { "nombre": "Ligia Manzano", "nit": "00000000000017", "nrc": "0000017" },
   "ventasContribuyentes": [
     { "correlativo": 1, "idDte": 529, "fecha": "2026-11-05", "claseDocumento": 4, "tipoDocumento": "03",
       "numeroResolucion": "DTE03M001P001000000000000529", "serie": "<sello de 40>", "numeroDocumento": "A1B2C3D4…",
-      "nitNrc": "00000000000081", "dui": "", "nombre": "Eventos Lumière, S.A. de C.V.",
+      "nitNrc": "00000000000081", "nrc": "0000081", "dui": "", "nombre": "Eventos Lumière, S.A. de C.V.",
       "ventasExentas": 0, "ventasNoSujetas": 0, "ventasGravadas": 200.00, "debitoFiscal": 26.00, "totalVentas": 226.00,
       "tipoOperacionRenta": 1, "tipoIngresoRenta": 2, "ivaRetenido": 0, "ivaPercibido": 0, "signo": 1,
       "lineaCsv": "05/11/2026;4;03;DTE03M001P001000000000000529;…;1;2;1" }
   ],
-  "consumidorFinal": [ { "correlativo": 1, "fecha": "2026-11-02", "documentos": 5, "delDocumento": "…", "alDocumento": "…",
+  "consumidorFinal": [
+    { "correlativo": 1, "fecha": "2026-11-02", "establecimiento": "M001P001", "esAnulacion": false, "documentos": 5,
+      "delDocumento": "…", "alDocumento": "…", "numeroControlDel": "DTE-01-M001P001-000000000000501", "numeroControlAl": "DTE-01-M001P001-000000000000505",
       "ventasExentas": 0, "ventasNoSujetas": 0, "ventasGravadas": 167.00, "ivaIncluido": 19.22, "totalVentas": 167.00,
-      "tipoOperacionRenta": 1, "tipoIngresoRenta": 2, "lineaCsv": "…" } ],
-  "compras": [ { "correlativo": 1, "idCompra": 158, "fecha": "2026-11-05", "tipoDocumento": "03", "numeroDocumento": "…", "nitNrc": "…", "dui": "",
+      "tipoOperacionRenta": 1, "tipoIngresoRenta": 2, "lineaCsv": "…" },
+    { "correlativo": 2, "fecha": "2026-11-02", "establecimiento": "M001P001", "esAnulacion": true, "documentos": 1,
+      "delDocumento": "…", "alDocumento": "…", "numeroControlDel": "DTE-01-M001P001-000000000000511", "numeroControlAl": "DTE-01-M001P001-000000000000511",
+      "fechaDocumento": "2026-10-31", "ventasExentas": 0, "ventasNoSujetas": 0, "ventasGravadas": -3.39, "ivaIncluido": -0.39, "totalVentas": -3.39,
+      "tipoOperacionRenta": 1, "tipoIngresoRenta": 2, "lineaCsv": null } ],
+  "compras": [ { "correlativo": 1, "idCompra": 158, "fecha": "2026-11-05", "tipoDocumento": "03", "numeroDocumento": "…", "nitNrc": "…", "nrc": "…", "dui": "",
       "nombre": "…", "comprasExentas": 0, "comprasGravadas": 85.40, "creditoFiscal": 11.10, "totalCompras": 85.40, "ivaPercibido": 0,
       "totalDocumento": 96.50, "tipoOperacionRenta": 1, "clasificacionRenta": 2, "sectorRenta": 4, "tipoCostoGasto": 2, "signo": 1, "lineaCsv": "…" } ],
   "anulados": [ { "correlativo": 1, "idDte": 511, "fecha": "2026-11-02", "fechaDocumento": "2026-10-31", "numeroResolucion": "DTE-01-M001P001-000000000000511",
@@ -586,7 +593,10 @@ Cada lista son las filas de su vista, con las columnas en camelCase y en el orde
 ```
 
 - **`lineaCsv` la arma la base** (funciones `fn_anexo_*`): la API la pasa tal cual. La pantalla une las líneas con `\r\n` y descarga el archivo para "Subir detalle de ventas y compras" del F-07.
-- `pendientes.sinSello`: DTE de producción del mes que todavía no tienen sello (contingencia o rechazo). No salen en los libros hasta que Hacienda los acepta.
+- `pendientes.sinSello`: DTE de producción del mes en contingencia (`estado = 'CONTINGENCIA'`). **Sí van en el libro** aunque no tengan sello (art. 141 del Código Tributario); la columna `serie` queda vacía y la pantalla avisa que hay que transmitirlos a Hacienda antes de declarar.
+- Filas con `esAnulacion: true` (consumidor final, art. 87 del Reglamento): factura invalidada en un mes posterior al de su emisión; se resta en el mes de la invalidación (`fecha`), con montos en negativo, `fechaDocumento` = su emisión y `lineaCsv: null`. La pantalla las omite del CSV (el anexo no admite negativos) y las muestra en la lista y el Excel.
+- `nrc` (solo dígitos) es para el libro en Excel; el anexo usa `nitNrc`. Las filas de consumidor final se agrupan por `fecha` + `establecimiento` (`numeroControl.slice(7, 15)`) + renta; `numeroControlDel`/`numeroControlAl` son el primero y el último número de control.
+- `emisor` (`tb_emisores`: nombre, NIT y NRC, solo dígitos) va en el encabezado de cada hoja del libro impreso (`libro-iva-imprimir.html`, art. 82 del Reglamento).
 - `periodo` inválido o en el futuro → 400 `campos.periodo`.
 
 ## Configuración (`tb_emisores`, `tb_parametros`, `tb_horarios`, `tb_formas_pago`, `tb_usuarios`)

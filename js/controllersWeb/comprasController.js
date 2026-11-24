@@ -8,7 +8,7 @@
  */
 import { montarLayout } from '../utils/layout.js';
 import { icono } from '../utils/icons.js';
-import { escapar, dinero, numero, fechaCorta, fechaLarga, fechaHora, fechaIso, mesAnio, MESES } from '../utils/formato.js';
+import { escapar, dinero, numero, fechaCorta, fechaLarga, fechaHora, fechaIso, mesAnio, MESES, nitConGuiones, nrcConGuion } from '../utils/formato.js';
 import { centavos, totalesCompra, DOCUMENTOS_CON_IVA, PERCEPCION_PCT } from '../utils/calculos.js';
 import { campo, entrada, mostrarErrores } from '../utils/formulario.js';
 import { crearPanel, htmlCabecera, htmlError, htmlExito } from '../utils/panel.js';
@@ -85,14 +85,6 @@ const documentoCorto = (tipo, numeroDoc) => `${TIPO_CORTO[tipo] ?? tipo}${numero
 const credito = (dias) => (dias ? `${dias} días` : 'Contado');
 const plural = (n, uno, varios) => `${numero(n)} ${n === 1 ? uno : varios}`;
 
-/** NIT de 14 dígitos → 0614-120318-102-5; de 9 (DUI) → 01234567-8. NRC → 245871-3. */
-function nitConGuiones(nit) {
-  const d = String(nit ?? '');
-  if (d.length === 14) return `${d.slice(0, 4)}-${d.slice(4, 10)}-${d.slice(10, 13)}-${d.slice(13)}`;
-  if (d.length === 9) return `${d.slice(0, 8)}-${d.slice(8)}`;
-  return d;
-}
-const nrcConGuion = (nrc) => (nrc && nrc.length > 1 ? `${nrc.slice(0, -1)}-${nrc.slice(-1)}` : nrc ?? '');
 
 function marcarSeleccionado() {
   for (const fila of document.querySelectorAll('#lista-compras [data-id], #lista-proveedores [data-id]')) {

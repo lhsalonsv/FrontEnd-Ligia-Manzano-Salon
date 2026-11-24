@@ -201,4 +201,26 @@
   .datos dt { @apply pt-px text-sm text-texto-secundario; }
   .datos dd { @apply min-w-0 break-words; }
   .datos dd small { @apply block text-sm text-texto-secundario; }
+
+  /* Libro de IVA impreso (libro-iva-imprimir.html): hoja carta horizontal, papel blanco sobre fondo gris en pantalla */
+  .hoja { @apply mx-auto mb-6 flex flex-col overflow-hidden bg-fondo-superficie text-xs shadow-md; width: 279.4mm; height: 215.9mm; padding: 10mm; }
+  .hoja-encabezado { @apply mb-2 grid grid-cols-3 items-end gap-4 pb-1; height: 12mm; }
+  .hoja-fila { @apply grid items-center gap-x-2 border-b border-borde-default px-1 tabular-nums; grid-template-columns: var(--grilla); height: 10mm; }
+  .hoja-fila > * { @apply min-w-0 truncate; }
+  .hoja-cabecera { @apply border-y border-borde-fuerte font-semibold; height: 7mm; }
+  .hoja-total { @apply border-t border-borde-fuerte font-semibold; height: 8mm; }
+  .hoja-linea2 { @apply block truncate font-mono text-texto-secundario; font-size: 0.625rem; }
+  .hoja-resumen { @apply text-xs tabular-nums; width: 120mm; }
+  .hoja-resumen th, .hoja-resumen td { @apply border-b border-borde-default px-2 py-1 text-right; }
+  .hoja-resumen th:first-child, .hoja-resumen td:first-child { @apply text-left; }
+  .hoja-resumen th { @apply font-semibold; }
+  .hoja-resumen tbody tr:last-child { @apply font-semibold; }
+
+  @media print {
+    body { @apply bg-fondo-superficie; }
+    .hoja { @apply m-0 shadow-none; width: auto; height: 195.9mm; padding: 0; break-after: page; }
+    .hoja:last-child { break-after: auto; }
+  }
 }
+
+@page { size: letter landscape; margin: 10mm; }

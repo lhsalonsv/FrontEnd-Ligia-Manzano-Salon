@@ -37,6 +37,7 @@ empleados.html             Empleados: equipo, ficha, formulario con especialidad
 inventario.html            Inventario: productos, lotes PEPS, últimos movimientos, ajuste de existencia y formulario
 compras.html               Compras: historial, registrar compra (productos con su lote, gastos del local, notas del proveedor) y proveedores
 libros-iva.html            Libros de IVA (admin, contador, auditor): los 4 anexos del F-07 del mes, archivo para Hacienda y libro en Excel
+libro-iva-imprimir.html    Libros de IVA para imprimir en hojas foliadas (arts. 82, 83, 85, 86 y 88 del Reglamento), se abre desde libros-iva.html
 bitacora.html              Bitácora: registros del día por módulo, persona o texto; qué cambió; exportar a Excel
 configuracion.html         Configuración (solo Administrador): negocio y Hacienda, reglas del salón, usuarios y la matriz de roles (borrador)
 css/input.css              Tema (tokens del diseño) y componentes → se compila a css/styles.css

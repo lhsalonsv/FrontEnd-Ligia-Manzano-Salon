@@ -75,6 +75,17 @@ export function duracion(minutos) {
   return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`;
 }
 
+/** NIT de 14 dígitos → 0614-120318-102-5; de 9 (DUI) → 01234567-8. Se guardan sin guiones. */
+export function nitConGuiones(nit) {
+  const d = String(nit ?? '').replace(/\D/g, '');
+  if (d.length === 14) return `${d.slice(0, 4)}-${d.slice(4, 10)}-${d.slice(10, 13)}-${d.slice(13)}`;
+  if (d.length === 9) return `${d.slice(0, 8)}-${d.slice(8)}`;
+  return d;
+}
+
+/** NRC → 245871-3 (el guion va antes del último dígito). */
+export const nrcConGuion = (nrc) => (nrc && nrc.length > 1 ? `${nrc.slice(0, -1)}-${nrc.slice(-1)}` : nrc ?? '');
+
 /** 'marzo de 2025' */
 export const mesAnio = (valor) => {
   const f = aFecha(valor);

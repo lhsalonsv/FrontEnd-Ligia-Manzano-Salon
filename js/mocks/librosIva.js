@@ -22,7 +22,7 @@ let siguiente = 400;
 function dte(tipoDte, fecEmi, horEmi, montos, extra = {}) {
   siguiente += 1;
   return {
-    idDte: siguiente, tipoDte, ambiente: '01', fecEmi, horEmi,
+    idDte: siguiente, tipoDte, ambiente: '01', estado: 'PROCESADO', fecEmi, horEmi,
     codigoGeneracion: `A1B2C3D4-0000-4000-8000-${hex(siguiente, 12)}`,
     numeroControl: `DTE-${tipoDte}-M001P001-${String(siguiente).padStart(15, '0')}`,
     selloRecibido: `${fecEmi.slice(0, 4)}${hex(siguiente * 104729, 12)}${'0'.repeat(24)}`,
@@ -62,8 +62,8 @@ const segundo = fechaIso(new Date(ahora.getFullYear(), ahora.getMonth(), 2));
 const ultimaAnterior = dtes.findLast((d) => d.tipoDte === '01' && d.fecEmi < fechaIso(new Date(ahora.getFullYear(), ahora.getMonth(), 1)));
 if (segundo <= hoy && ultimaAnterior) invalidaciones.push({ idDte: ultimaAnterior.idDte, fecEmi: segundo, horEmi: '08:45', estado: 'PROCESADO' });
 
-// Una factura de hoy en contingencia: Hacienda todavía no la acepta, así que aún no va en el libro
-dtes.push({ ...factura(hoy, '17:50', 25), selloRecibido: null });
+// Una factura de hoy en contingencia: sin sello todavía, pero igual va en el libro (art. 141 Código Tributario)
+dtes.push({ ...factura(hoy, '17:50', 25), selloRecibido: null, estado: 'CONTINGENCIA' });
 
 export const DTES_PRUEBA = dtes;
 export const INVALIDACIONES_PRUEBA = invalidaciones;
