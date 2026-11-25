@@ -65,16 +65,19 @@ function productoSimple([nombre, idCategoria, idMarca, precio, costo, existencia
 }
 
 export const PRODUCTOS_PRUEBA = [
-  // El del mockup: dos lotes con 1 cada uno, bajo el mínimo
+  // El del mockup: 2 en existencia, bajo el mínimo. Por PEPS el lote viejo se agota antes de tocar el nuevo (el mockup lo mostraba con 1 y 1)
   {
     idProducto: 1, codigo: '7410000000123', nombreProducto: 'Shampoo hidratante 400 ml', descripcion: 'Para cabello seco o maltratado.',
     idMarca: 1, idCategoria: 1, codUnidadMedida: 59, precioVenta: 13, comisionFija: 2, stockMinimo: 6, activo: true,
     vendidos30d: 15,
     lotes: [
-      { idLote: 1, fechaIngreso: hace(63), costoUnitario: 6.5, cantidadInicial: 12, cantidadDisponible: 1, numeroCompra: 'C-0142' },
-      { idLote: 2, fechaIngreso: hace(30), costoUnitario: 6.8, cantidadInicial: 12, cantidadDisponible: 1, numeroCompra: 'C-0157' },
+      { idLote: 1, fechaIngreso: hace(63), costoUnitario: 6.5, cantidadInicial: 12, cantidadDisponible: 0, numeroCompra: 'C-0142' },
+      { idLote: 2, fechaIngreso: hace(30), costoUnitario: 6.8, cantidadInicial: 12, cantidadDisponible: 2, numeroCompra: 'C-0157' },
     ],
     movimientos: [
+      // Ventas sin factura de referencia: cuadran el kardex (24 comprados − 2 en existencia = 22 salidas)
+      ...[55, 50, 45, 40, 35, 32, 29, 27, 25, 23, 21, 19, 17, 15, 13, 11, 10, 9, 8]
+        .map((dias) => ({ fechaHora: hace(dias), tipo: 'SALIDA_VENTA', cantidad: -1, referencia: null, motivo: null })),
       { fechaHora: hace(0), tipo: 'SALIDA_VENTA', cantidad: -1, referencia: 'DTE-01-…0412', motivo: null },
       { fechaHora: hace(2), tipo: 'SALIDA_VENTA', cantidad: -1, referencia: 'DTE-01-…0371', motivo: null },
       { fechaHora: hace(7), tipo: 'SALIDA_AJUSTE', cantidad: -1, referencia: null, motivo: 'Producto dañado: frasco roto' },
@@ -89,6 +92,9 @@ export const PRODUCTOS_PRUEBA = [
     idMarca: 2, idCategoria: 1, codUnidadMedida: 59, precioVenta: 9, comisionFija: 1, stockMinimo: 0, activo: false,
     vendidos30d: 0,
     lotes: [{ idLote: 90, fechaIngreso: hace(200), costoUnitario: 4.2, cantidadInicial: 6, cantidadDisponible: 0, numeroCompra: 'C-0098' }],
-    movimientos: [{ fechaHora: hace(200), tipo: 'ENTRADA_COMPRA', cantidad: 6, referencia: 'C-0098', motivo: null }],
+    movimientos: [
+      { fechaHora: hace(150), tipo: 'SALIDA_AJUSTE', cantidad: -6, referencia: null, motivo: 'Descontinuado: se dio de baja el sobrante' },
+      { fechaHora: hace(200), tipo: 'ENTRADA_COMPRA', cantidad: 6, referencia: 'C-0098', motivo: null },
+    ],
   },
 ];

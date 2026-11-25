@@ -10,7 +10,7 @@ import { montarLayout } from '../utils/layout.js';
 import { icono } from '../utils/icons.js';
 import { escapar, dinero, numero, fechaCorta, fechaIso, mesAnio } from '../utils/formato.js';
 import { centavos } from '../utils/calculos.js';
-import { crearXlsx, TIPO_XLSX } from '../utils/xlsx.js';
+import { crearXlsx, descargar } from '../utils/xlsx.js';
 import { obtenerLibros } from '../services/librosIvaService.js';
 
 const sesion = montarLayout();
@@ -192,20 +192,12 @@ async function cargar() {
 
 // --- Descargas ---------------------------------------------------------------
 
-function descargar(contenido, tipo, nombre) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([contenido], { type: tipo }));
-  a.download = nombre;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-
 /** El archivo para "Subir detalle" del F-07: las líneas que arma la base, sin encabezados, separadas por punto y coma. */
 function descargarCsv() {
   const libro = LIBROS[estado.libro];
   const lineas = estado.datos[libro.clave].filter((r) => r.lineaCsv !== null).map((r) => r.lineaCsv); // las anulaciones del art. 87 no van: el anexo no admite negativos
   // ponytail: UTF-8 sin BOM. Si el portal de Hacienda rechaza tildes, cambiar a Windows-1252 (pendiente de la primera carga real).
-  descargar(`${lineas.join('\r\n')}\r\n`, 'text/csv;charset=utf-8', `${libro.archivo}-${estado.periodo}.csv`);
+  descargar(`${libro.archivo}-${estado.periodo}.csv`, `${lineas.join('\r\n')}\r\n`, 'text/csv;charset=utf-8');
 }
 
 /** El libro para la contadora: todas las columnas, montos como número (las notas de crédito en negativo) y totales. */
@@ -217,7 +209,7 @@ function descargarExcel() {
   const archivo = crearXlsx([columnas, ...filas, ...(sumar.length ? [totales] : [])], {
     hoja: `${libro.titulo} ${estado.periodo}`, anchos, totales: sumar.length > 0,
   });
-  descargar(archivo, TIPO_XLSX, `libro-${libro.archivo}-${estado.periodo}.xlsx`);
+  descargar(`libro-${libro.archivo}-${estado.periodo}.xlsx`, archivo);
 }
 
 // --- Eventos -----------------------------------------------------------------

@@ -9,7 +9,7 @@ import { montarLayout } from '../utils/layout.js';
 import { icono } from '../utils/icons.js';
 import { escapar, dinero, numero, fechaIso, fechaHora, iniciales, MESES } from '../utils/formato.js';
 import { crearPanel, htmlCabecera, htmlError } from '../utils/panel.js';
-import { crearXlsx, TIPO_XLSX } from '../utils/xlsx.js';
+import { crearXlsx, descargar } from '../utils/xlsx.js';
 import { listarBitacora, obtenerRegistro, todoElDia } from '../services/bitacoraService.js';
 
 const sesion = montarLayout();
@@ -236,11 +236,7 @@ async function exportar(boton) {
     const filas = [['Fecha y hora', 'Quién', 'Módulo', 'Acción', 'Registro', 'Qué pasó'],
       ...registros.map((r) => [`${estado.fecha} ${horaDe(r.fechaHora)}`, r.nombreUsuario ?? 'Sistema', nombreModulo(r.modulo), r.accion, r.entidadId, r.descripcion])];
     const archivo = crearXlsx(filas, { hoja: `Bitácora ${estado.fecha}`, anchos: [20, 18, 14, 24, 34, 90] });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([archivo], { type: TIPO_XLSX }));
-    a.download = `bitacora-${estado.fecha}${estado.modulo ? `-${estado.modulo.toLowerCase()}` : ''}.xlsx`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    descargar(`bitacora-${estado.fecha}${estado.modulo ? `-${estado.modulo.toLowerCase()}` : ''}.xlsx`, archivo);
   } catch (error) {
     alert(error.message);
   } finally {

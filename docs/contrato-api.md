@@ -407,7 +407,7 @@ Todos (activos e inactivos), por `nombre_comercial`. Son pocos: el frontend busc
 ```json
 [
   { "idProveedor": 1, "nombreComercial": "Distribuidora Aurora", "razonSocial": "Aurora Distribuciones, S.A. de C.V.",
-    "nit": "00000000000011", "nrc": "0000011", "contactoNombre": "Andrea López", "telefono": "7000-0031",
+    "nit": "00000000000011", "nrc": "0000011", "nacionalidad": "El Salvador", "contactoNombre": "Andrea López", "telefono": "7000-0031",
     "diasCredito": 30, "activo": true,
     "ultimaCompra": { "fechaCompra": "2026-11-20", "total": 318.40 } }
 ]
@@ -434,7 +434,7 @@ Todas las columnas en camelCase, más:
 
 ```json
 { "nombreComercial": "Belleza Pro Distribuidora", "razonSocial": "Belleza Profesional, S.A. de C.V.", "nit": "00000000000051",
-  "nrc": "0000051", "contactoNombre": null, "telefono": null, "correo": null, "direccion": null, "diasCredito": 30, "notas": null }
+  "nrc": "0000051", "nacionalidad": "El Salvador", "contactoNombre": null, "telefono": null, "correo": null, "direccion": null, "diasCredito": 30, "notas": null }
 ```
 
 | Campo | Regla |
@@ -443,6 +443,7 @@ Todas las columnas en camelCase, más:
 | `razonSocial` | obligatoria, hasta 250 |
 | `nit` | obligatorio: 14 dígitos (o 9 si es un DUI homologado); **único** |
 | `nrc` | obligatorio: 2 a 8 dígitos; **único**. Sin NRC no se acredita el IVA de las compras |
+| `nacionalidad` | obligatoria, hasta 60; país del proveedor, por defecto `El Salvador`. Sale en el registro de control de inventarios (art. 81 del Reglamento). Columna `tb_proveedores.nacionalidad` (modelo v1.4) |
 | `contactoNombre` (100), `telefono` (30), `correo` (100, formato de correo), `direccion` (200), `notas` (300) | opcionales |
 | `diasCredito` | entero de 0 a 120; 0 = contado |
 
@@ -598,6 +599,95 @@ Cada lista son las filas de su vista, con las columnas en camelCase y en el orde
 - `nrc` (solo dígitos) es para el libro en Excel; el anexo usa `nitNrc`. Las filas de consumidor final se agrupan por `fecha` + `establecimiento` (`numeroControl.slice(7, 15)`) + renta; `numeroControlDel`/`numeroControlAl` son el primero y el último número de control.
 - `emisor` (`tb_emisores`: nombre, NIT y NRC, solo dígitos) va en el encabezado de cada hoja del libro impreso (`libro-iva-imprimir.html`, art. 82 del Reglamento).
 - `periodo` inválido o en el futuro → 400 `campos.periodo`.
+
+## Registro de control de inventarios (vista `v_registro_inventario`, modelo v1.4)
+
+Registro de control de inventarios del art. 142-A del Código Tributario (contenido del art. 81 del Reglamento): por producto, cada movimiento del kardex con unidades y costos PEPS. Solo lectura. Roles `ADMINISTRADOR`, `CONTADOR` y `AUDITOR` (los demás reciben 403).
+
+### `GET /api/inventario/registro?periodo=2026-11[&idProducto=3]`
+
+Los datos salen de la vista SQL `v_registro_inventario` (modelo v1.4): una fila por lote tocado, igual que `tb_movimientos_inventario`. Si no se manda `idProducto` vienen todos los productos con movimientos en el mes o con saldo inicial distinto de 0, por nombre.
+
+```json
+{
+  "emisor": { "nombre": "Ligia Manzano", "nit": "00000000000017", "nrc": "0000017" },
+  "periodo": "2026-11",
+  "productos": [
+    { "idProducto": 1, "codigo": "7410000000123", "nombreProducto": "Shampoo hidratante 400 ml", "marca": "Aurora Pro", "unidadMedida": "Unidad",
+      "saldoInicial": { "unidades": 12, "valor": 78.00 },
+      "movimientos": [
+        { "idMovimiento": 1001, "correlativo": 1, "fecha": "2026-11-05", "tipo": "ENTRADA_COMPRA", "descripcionOperacion": "Compra a proveedor",
+          "tipoDocumento": "CCF", "numeroDocumento": "DTE-03-M001P001-000000000000157", "proveedor": "Aurora Distribuciones, S.A. de C.V.",
+          "nacionalidadProveedor": "El Salvador", "referenciaCosto": "Libro de compras 11/2026, compra C-0157", "idLote": 2, "costoUnitario": 6.80,
+          "entradaUnidades": 12, "salidaUnidades": 0, "entradaValor": 81.60, "salidaValor": 0, "saldoUnidades": 24, "saldoValor": 159.60 },
+        { "idMovimiento": 1002, "correlativo": 2, "fecha": "2026-11-09", "tipo": "SALIDA_VENTA", "descripcionOperacion": "Venta a cliente",
+          "tipoDocumento": "FACTURA", "numeroDocumento": "DTE-01-M001P001-000000000000412", "proveedor": null, "nacionalidadProveedor": null,
+          "referenciaCosto": "Lote 1 (compra C-0142)", "idLote": 1, "costoUnitario": 6.50,
+          "entradaUnidades": 0, "salidaUnidades": 1, "entradaValor": 0, "salidaValor": 6.50, "saldoUnidades": 23, "saldoValor": 153.10 }
+      ] }
+  ]
+}
+```
+
+- `saldoInicial` = el saldo (`saldoUnidades`, `saldoValor`) de la última fila del producto **antes** del mes; `0` y `0` si no hay ninguna.
+- `movimientos`: solo las filas del mes, por fecha y luego por `idMovimiento`. `correlativo` es por producto y vuelve a 1 cada año (no cada mes). Cada salida trae una fila por lote que toca (PEPS), con el `costoUnitario` de ese lote.
+- Entradas: `proveedor`, `nacionalidadProveedor` (de `tb_proveedores.nacionalidad`), `tipoDocumento` y `numeroDocumento` son los de la compra; en ventas, el documento es el DTE y no hay proveedor; en ajustes son `null`, salvo la devolución al proveedor, que trae la nota de crédito del proveedor. `descripcionOperacion` lleva el motivo del ajuste después de dos puntos (`Ajuste: producto dañado`, `Ajuste por inventario físico: …`). `referenciaCosto`: en compras, el libro de compras del mes en que se declaró (`Libro de compras MM/AAAA, compra C-0157`); en las demás filas, el lote PEPS y su compra (`Lote 1 (compra C-0142)`, o solo `Lote 7` si nació de un ajuste).
+- `tipo`: los del kardex (`ENTRADA_COMPRA` · `ENTRADA_AJUSTE` · `SALIDA_VENTA` · `SALIDA_AJUSTE` · `USO_SALON` · `DEVOLUCION_ANULACION` · `DEVOLUCION_NC` · `DEVOLUCION_FACTURA`). `tipoDocumento`: `CCF`, `FACTURA`, `NC`, `ND` u `OTRO`. Las unidades y los valores van siempre como número (0 donde no aplica); valores en dólares con 2 decimales. Los saldos son acumulados: la última fila coincide con la suma de `cantidadDisponible` de los lotes (y su valor al costo) al cierre del mes.
+- `emisor` (`tb_emisores`, NIT y NRC solo dígitos) va en el encabezado de cada folio impreso (`registro-inventario-imprimir.html`).
+- `periodo` inválido o en el futuro → 400 `campos.periodo`. `idProducto` que no existe → 404.
+
+## Inventario físico (`tb_inventarios_fisicos`, `tb_inventario_fisico_conteo`, vista `v_acta_inventario_fisico`, modelo v1.4)
+
+Conteo físico del inventario al inicio del negocio y al cierre de cada ejercicio (31 de diciembre) con su acta firmada (art. 142 del Código Tributario); el comparativo contra el registro de control es el del art. 81 del Reglamento. Roles: `ADMINISTRADOR` y `CONTADOR` crean, editan y cierran; `AUDITOR` solo lee (los `POST`/`PUT` le dan 403); los demás roles, 403 en todo.
+
+### `GET /api/inventario-fisico`
+
+```json
+[ { "idInventarioFisico": 1, "fechaCorte": "2025-12-31", "estado": "CERRADO", "productosContados": 14, "creadoEn": "2025-12-31T18:05:00-06:00", "cerradoEn": "2025-12-31T20:40:00-06:00" } ]
+```
+
+Por `fechaCorte`, del más nuevo al más viejo. `estado`: `BORRADOR` o `CERRADO`. `cerradoEn` es `null` mientras sea borrador. `productosContados` = productos con `cantidadContada` guardada.
+
+### `POST /api/inventario-fisico`
+
+Body `{ "fechaCorte": "2026-12-31" }`. 201 con el conteo nuevo (`BORRADOR`, forma del `GET /{id}`).
+
+- 409 si ya existe un conteo con esa `fechaCorte` (es `unique`).
+- 400 `campos.fechaCorte` si la fecha es futura o inválida, o si ya hay otro conteo en `BORRADOR` (se cierra o se deja uno solo abierto).
+
+### `GET /api/inventario-fisico/{id}`
+
+```json
+{
+  "idInventarioFisico": 1, "fechaCorte": "2025-12-31", "estado": "CERRADO", "cerradoEn": "2025-12-31T20:30:00-06:00", "observaciones": "Conteo con la contadora; sin faltantes graves.",
+  "emisor": { "nombre": "Ligia Manzano", "nit": "00000000000017", "nrc": "0000017" },
+  "conteo": [
+    { "idProducto": 1, "codigo": "7410000000123", "nombreProducto": "Shampoo hidratante 400 ml", "marca": "Aurora Pro", "categoria": "Cabello", "unidadMedida": "Unidad",
+      "existenciaSistema": 2, "valorSistema": 13.60, "cantidadContada": 3, "nota": "Un frasco estaba en bodega" }
+  ],
+  "acta": [
+    { "categoria": "Cabello", "codigo": "7410000000123", "nombreProducto": "Shampoo hidratante 400 ml", "nombreMarca": "Aurora Pro", "unidadMedida": "Unidad",
+      "idLote": 2, "cantidad": 3, "costoUnitario": 6.80, "valor": 20.40, "referenciaCosto": "Libro de compras 12/2026, compra C-0157" }
+  ],
+  "ajustes": [ { "idProducto": 1, "cantidad": 1, "valor": 6.80 } ]
+}
+```
+
+- `conteo`: un elemento por producto activo, por categoría y nombre. En `BORRADOR`, `existenciaSistema` y `valorSistema` (valor PEPS de esa existencia, sin IVA) son los **actuales**; al cerrar quedan **congelados** (`tb_inventario_fisico_conteo.existencia_sistema`) y un conteo `CERRADO` no vuelve a cambiar. `cantidadContada` es `null` si aún no se cuenta; `nota` puede ser `null`.
+- `acta` (solo `CERRADO`): filas de `v_acta_inventario_fisico` en camelCase, una por lote vivo al final del día de `fechaCorte`, por categoría y producto. `costoUnitario` sin IVA; `valor` = `cantidad × costoUnitario`; `referenciaCosto`: `Libro de compras 12/2026, compra C-0157` o `Lote 7 (ajuste)`.
+- `ajustes` (solo `CERRADO`): por cada producto con diferencia, `cantidad` firmada (`cantidadContada − existenciaSistema`) y `valor` firmado (PEPS: lo que sale se toma de los lotes más viejos; lo que entra, al último costo).
+- 404 si no existe.
+
+### `PUT /api/inventario-fisico/{id}/conteo`
+
+Body: `[ { "idProducto": 1, "cantidadContada": 3, "nota": "Un frasco estaba en bodega" } ]` (puede traer solo los productos que cambiaron; `cantidadContada` entero ≥ 0, `nota` opcional hasta 250). Responde 200 con el `GET /{id}`. 409 si el conteo ya está `CERRADO`; 400 `campos` si una cantidad es inválida o un `idProducto` no existe.
+
+### `POST /api/inventario-fisico/{id}/cerrar`
+
+Body `{ "observaciones": "..." }` (opcional). En **una transacción**: guarda `existencia_sistema`, inserta un ajuste PEPS en el kardex por cada diferencia (fechado `fechaCorte` 23:59:59, hora de El Salvador, con `id_inventario_fisico`) y pasa a `CERRADO` (`cerradoEn`, `id_usuario_cierra`). Responde 200 con el `GET /{id}`.
+
+- 400 `campos.conteo` con la lista de productos activos sin contar (`[{ "idProducto": 4, "nombreProducto": "..." }]`) si falta alguno.
+- 409 si ya está `CERRADO`.
 
 ## Configuración (`tb_emisores`, `tb_parametros`, `tb_horarios`, `tb_formas_pago`, `tb_usuarios`)
 

@@ -28,6 +28,8 @@ export const DATOS_PRUEBA = {
   bitacora: true,
   catalogos: true,
   librosIva: true,
+  registroInventario: true,
+  inventarioFisico: true,
 };
 
 /** Minutos sin uso antes de cerrar la sesión (lo dice la pantalla de login). */

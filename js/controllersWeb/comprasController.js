@@ -345,6 +345,7 @@ async function mostrarProveedor(idProveedor, aviso = '') {
     <dl class="datos">
       <dt>NIT</dt><dd class="tabular-nums" data-campo="nit">${escapar(nitConGuiones(p.nit))}</dd>
       <dt>NRC</dt><dd class="tabular-nums" data-campo="nrc">${escapar(nrcConGuion(p.nrc))}</dd>
+      <dt>Nacionalidad</dt><dd data-campo="nacionalidad">${escapar(p.nacionalidad)}</dd>
       <dt>Contacto</dt><dd>${contacto || '—'}</dd>
       ${p.direccion ? `<dt>Dirección</dt><dd data-campo="direccion">${escapar(p.direccion)}</dd>` : ''}
       <dt>Crédito</dt><dd data-campo="dias_credito">${credito(p.diasCredito)}${ultima?.fechaVencimientoPago ? `<small>La compra del ${fechaLarga(ultima.fechaCompra)} vence el ${fechaLarga(ultima.fechaVencimientoPago)}</small>` : ''}</dd>
@@ -406,6 +407,7 @@ function mostrarFormularioProveedor(proveedor = null) {
           ${campo({ nombre: 'nrc', columna: 'nrc', etiqueta: 'NRC', obligatorio: true, control: entrada('nrc', p.nrc && nrcConGuion(p.nrc), 'maxlength="9" inputmode="numeric" autocomplete="off" class="tabular-nums" placeholder="000000-0" aria-describedby="ayuda-nrc"') })}
         </div>
         <p class="campo-ayuda -mt-3" id="ayuda-nrc">Sin el NRC no se puede tomar el IVA como crédito fiscal.</p>
+        ${campo({ nombre: 'nacionalidad', columna: 'nacionalidad', etiqueta: 'Nacionalidad', obligatorio: true, control: entrada('nacionalidad', p.nacionalidad ?? 'El Salvador', 'maxlength="60" autocomplete="off"') })}
 
         <p class="panel-titulo mt-2 mb-0">Contacto</p>
         ${campo({ nombre: 'contactoNombre', columna: 'contacto_nombre', etiqueta: 'Persona de contacto', control: entrada('contactoNombre', p.contactoNombre, 'maxlength="100" autocomplete="off"') })}
@@ -447,6 +449,7 @@ function leerProveedor(form) {
     razonSocial: v('razonSocial'),
     nit: soloDigitos(v('nit')),
     nrc: soloDigitos(v('nrc')),
+    nacionalidad: v('nacionalidad'),
     contactoNombre: v('contactoNombre') || null,
     telefono: v('telefono') || null,
     correo: v('correo') || null,
@@ -461,6 +464,7 @@ function leerProveedor(form) {
   else if (![9, 14].includes(datos.nit.length)) errores.nit = 'El NIT tiene 14 dígitos (o 9 si es un DUI).';
   if (!datos.nrc) errores.nrc = 'Escriba el NRC.';
   else if (datos.nrc.length < 2 || datos.nrc.length > 8) errores.nrc = 'El NRC tiene de 2 a 8 dígitos.';
+  if (!datos.nacionalidad) errores.nacionalidad = 'Escriba el país del proveedor (El Salvador si es local).';
   if (datos.correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(datos.correo)) errores.correo = 'Revise el correo.';
   return { datos, errores };
 }

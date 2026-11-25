@@ -135,3 +135,12 @@ export function crearXlsx(filas, { hoja = 'Hoja1', anchos = [], totales = false 
 }
 
 export const TIPO_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** Descarga un archivo desde el navegador (xlsx, csv...). */
+export function descargar(nombreArchivo, contenido, tipo = TIPO_XLSX) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([contenido], { type: tipo }));
+  a.download = nombreArchivo;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
