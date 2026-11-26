@@ -4,6 +4,7 @@
  * reparto de filas por hoja, HTML de cada folio (clases .hoja* de css/input.css) y la barra de impresión.
  * Prueba del reparto: npm test
  */
+import './estilos.js'; // aplica la grilla de cada hoja (la CSP bloquea style="…")
 import { icono } from './icons.js';
 import { escapar, nitConGuiones, nrcConGuion } from './formato.js';
 import { centavos } from './calculos.js';
@@ -43,7 +44,7 @@ export const celdas = (columnas, valores, clases = '') => valores.map((v, i) => 
  */
 export function htmlHoja({ emisor, titulo, derecha, folio, subtitulo = '', grilla, columnas, filas, totales = null, pie = '' }) {
   const primeraNum = columnas.findIndex((c) => c.num);
-  return `<section class="hoja" style="--grilla: ${grilla}">
+  return `<section class="hoja" data-estilo="--grilla: ${grilla}">
     <header class="hoja-encabezado">
       <p><b class="block font-semibold">${escapar(emisor.nombre)}</b>NIT ${escapar(nitConGuiones(emisor.nit))} · NRC ${escapar(nrcConGuion(emisor.nrc))}</p>
       <h1 class="text-center text-base">${escapar(titulo)}</h1>

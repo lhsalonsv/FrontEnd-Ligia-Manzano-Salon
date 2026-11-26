@@ -3,6 +3,7 @@
  * Contabilidad → Parámetros, en 4 pestañas: plan de cuentas (árbol por código), ejercicios y períodos,
  * tipos de partida y configuración contable. Administrador y contador editan; el auditor solo mira.
  */
+import '../utils/estilos.js'; // sangrías del árbol (la CSP bloquea style="…")
 import { montarLayout } from '../utils/layout.js';
 import { icono } from '../utils/icons.js';
 import { escapar, fechaCorta, dinero, MESES } from '../utils/formato.js';
@@ -117,7 +118,7 @@ function htmlCuenta(c, filtrando) {
     : '<span class="size-6 shrink-0"></span>';
   return `<div class="fila-cta min-h-10 border-b border-neutro-100 py-1 text-15 ${c.activa ? '' : 'text-texto-secundario'}">
     <span class="font-mono text-sm tabular-nums">${c.codigo}</span>
-    <span class="flex min-w-0 items-center gap-1" style="padding-left:${c.nivel * 14}px">${flecha}<span class="line-clamp-2 min-w-0 break-words ${c.aceptaMovimiento ? '' : 'font-semibold'}" title="${escapar(c.nombre)}">${escapar(c.nombre)}</span></span>
+    <span class="flex min-w-0 items-center gap-1" data-estilo="padding-left:${c.nivel * 14}px">${flecha}<span class="line-clamp-2 min-w-0 break-words ${c.aceptaMovimiento ? '' : 'font-semibold'}" title="${escapar(c.nombre)}">${escapar(c.nombre)}</span></span>
     <span class="text-13">${TIPOS_CUENTA[c.tipo]}</span>
     <span class="text-13">${c.naturaleza === 'D' ? 'Deudora' : 'Acreedora'}</span>
     <span>${c.aceptaMovimiento ? 'Sí' : '—'}</span>

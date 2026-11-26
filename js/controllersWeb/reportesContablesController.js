@@ -5,6 +5,7 @@
  * (js/utils/reportesContables.js). Cada pestaña baja a Excel y, menos el Resumen, se imprime en reportes-contables-imprimir.html.
  * URL: reportes-contables.html?pestana=mayor&cuenta=1101&desde=2026-11-01&hasta=2026-11-30 (así abre el Mayor desde el Balance de comprobación).
  */
+import '../utils/estilos.js'; // sangrías y barras calculadas (la CSP bloquea style="…")
 import { montarLayout } from '../utils/layout.js';
 import { icono } from '../utils/icons.js';
 import { escapar, dinero, fechaIso, MESES } from '../utils/formato.js';
@@ -73,7 +74,7 @@ function celdaHtml(v, col, fila) {
   if (typeof v === 'number') return `<span class="${v < 0 ? 'text-estado-error' : ''}">${dinero(v)}</span>`;
   const texto = escapar(typeof v === 'object' ? v.t : v);
   const interior = typeof v === 'object' && v.href ? `<a href="${escapar(v.href)}" class="underline decoration-borde-fuerte underline-offset-2 hover:decoration-current">${texto}</a>` : texto;
-  return col.sangria ? `<span class="block" style="padding-left:${(fila.nivel ?? 0) * 0.75}rem">${interior}</span>` : interior;
+  return col.sangria ? `<span class="block" data-estilo="padding-left:${(fila.nivel ?? 0) * 0.75}rem">${interior}</span>` : interior;
 }
 
 function htmlFilas(m, filas) {
@@ -104,7 +105,7 @@ function htmlResumen(meses) {
     <p class="text-13 text-texto-secundario">${escapar(nombreMes(m.anio, m.mes))}</p>
     <p class="mt-2 border-t border-neutro-100 pt-2 text-15 tabular-nums ${negativoMalo && acum < 0 ? 'text-estado-error' : ''}">${dinero(acum)} <span class="text-13 text-texto-secundario">en el año</span></p></div>`;
   const maximo = Math.max(1, ...meses.flatMap((x) => [x.ingresos, x.costos]));
-  const barra = (valor, color, rotulo, x) => `<span class="w-1/3 max-w-8 rounded-t ${color}" style="height:${Math.max(0, valor) / maximo * 100}%" title="${escapar(`${rotulo} de ${nombreMes(x.anio, x.mes)}: ${dinero(valor)}`)}"></span>`;
+  const barra = (valor, color, rotulo, x) => `<span class="w-1/3 max-w-8 rounded-t ${color}" data-estilo="height:${Math.max(0, valor) / maximo * 100}%" title="${escapar(`${rotulo} de ${nombreMes(x.anio, x.mes)}: ${dinero(valor)}`)}"></span>`;
   const grafica = `<section class="tarjeta rounded-grande p-4" aria-label="Gráfica de ingresos contra costos y gastos">
     <h3 class="text-15 font-semibold">Ingresos vs costos y gastos, últimos 6 meses</h3>
     <p class="mb-3 flex gap-4 text-13 text-texto-secundario"><span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-exito-600"></span>Ingresos</span><span class="flex items-center gap-1.5"><span class="size-2.5 rounded-sm bg-rojo-500"></span>Costos y gastos</span></p>

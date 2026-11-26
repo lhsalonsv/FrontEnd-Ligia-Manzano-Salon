@@ -78,7 +78,7 @@ function celda(fila, i, columna) {
   const v = fila.v[i];
   if (v == null || v === '') return '';
   const texto = typeof v === 'number' ? montoHoja(v) : escapar(typeof v === 'object' ? v.t : v);
-  const interior = columna.sangria ? `<span class="block" style="padding-left:${(fila.nivel ?? 0) * 3}mm">${texto}</span>` : texto;
+  const interior = columna.sangria ? `<span class="block" data-estilo="padding-left:${(fila.nivel ?? 0) * 3}mm">${texto}</span>` : texto;
   return fila.tipo === 'normal' ? interior : `<b class="font-semibold">${interior}</b>`;
 }
 
