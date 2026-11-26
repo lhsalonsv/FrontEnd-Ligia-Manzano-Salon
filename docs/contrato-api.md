@@ -443,7 +443,7 @@ Todas las columnas en camelCase, más:
 | `razonSocial` | obligatoria, hasta 250 |
 | `nit` | obligatorio: 14 dígitos (o 9 si es un DUI homologado); **único** |
 | `nrc` | obligatorio: 2 a 8 dígitos; **único**. Sin NRC no se acredita el IVA de las compras |
-| `nacionalidad` | obligatoria, hasta 60; país del proveedor, por defecto `El Salvador`. Sale en el registro de control de inventarios (art. 81 del Reglamento). Columna `tb_proveedores.nacionalidad` (modelo v1.4) |
+| `nacionalidad` | obligatoria, hasta 40; país del proveedor, por defecto `El Salvador`. Sale en el registro de control de inventarios (art. 81 del Reglamento). Columna `tb_proveedores.nacionalidad` (modelo v1.4) |
 | `contactoNombre` (100), `telefono` (30), `correo` (100, formato de correo), `direccion` (200), `notas` (300) | opcionales |
 | `diasCredito` | entero de 0 a 120; 0 = contado |
 
@@ -457,7 +457,7 @@ Todas las columnas en camelCase, más:
 
 ## Compras (`tb_compras`, `tb_detalle_compras`, `tb_lotes`)
 
-Una línea es un **producto** (crea un lote PEPS y una entrada en el kardex `ENTRADA_COMPRA`) o un **gasto** del local sin producto (alquiler, luz, agua: no toca el inventario). Las compras no se editan: si algo llegó mal, se corrige con un ajuste en Inventario o con la nota de crédito del proveedor. Desde la migración 1.3 llevan los datos del libro de compras de IVA (ver "Libros de IVA").
+Una línea es un **producto** (crea un lote PEPS y una entrada en el kardex `ENTRADA_COMPRA`) o un **gasto** del local sin producto (alquiler, luz, agua: no toca el inventario). Las compras no se editan: si algo llegó mal, se corrige con un ajuste en Inventario o con la nota de crédito del proveedor. Una **nota de crédito (`NC`)** puede llevar líneas de producto: son las unidades que se devuelven al proveedor (migración 1.5, ver abajo). Desde la migración 1.3 llevan los datos del libro de compras de IVA (ver "Libros de IVA").
 
 ### `GET /api/compras?buscar=&filtro=todas&idProveedor=&pagina=0&tamano=50`
 
@@ -530,8 +530,8 @@ Una línea es un **producto** (crea un lote PEPS y una entrada en el kardex `ENT
 | `comprasExentas` | `compras_exentas` | exento o no sujeto, ≥ 0, 2 decimales; normalmente 0 |
 | `percepcion` | → `iva_percibido` | `true` si el proveedor (gran contribuyente) cobró la percepción de 1 % |
 | `tipoOperacionRenta` · `clasificacionRenta` · `sectorRenta` · `tipoCostoGasto` | columnas `*_renta` y `tipo_costo_gasto` | códigos del anexo (MODELO_DATOS.md → "Códigos de renta"). La pantalla propone: productos = `1/1/4/5`; gastos = `1/2/4/2`; una nota, los de la compra que corrige |
-| `detalle` | | al menos 1 línea. Producto: `idProducto` activo, no se repite. Gasto: `descripcion` (hasta 200) sin `idProducto`. **Una `NC` o `ND` solo lleva líneas sin producto** |
-| `cantidad` | | entero de 1 a 9999 (un gasto lleva 1) |
+| `detalle` | | al menos 1 línea. Producto: `idProducto` activo, no se repite. Gasto: `descripcion` (hasta 200) sin `idProducto`. **`ND`: solo líneas sin producto.** **`NC`: puede llevar líneas con producto = unidades devueltas** (ver "Nota de crédito con devolución"); una `NC` sin líneas de producto es una rebaja de precio y no mueve unidades |
+| `cantidad` | | entero de 1 a 9999 (un gasto lleva 1). En una línea de producto de una `NC`, además `≤` lo que trajo la compra relacionada y `≤` lo que queda de su lote |
 | `costoUnitario` | | sin IVA, ≥ 0, hasta 4 decimales (en una `FACTURA` u `OTRO`, el costo que se pagó) |
 
 Lo calcula la API (igual que `totalesCompra` en `js/utils/calculos.js`):
@@ -546,7 +546,17 @@ Respuestas:
 
 - 201 con el mismo objeto de `GET /api/compras/{id}`.
 - 400 con `campos` (`idProveedor`, `fechaCompra`, `numeroDocumentoProveedor`, `codigoGeneracionProveedor`, `idCompraRelacionada`, `periodoIva`, `comprasExentas`, `detalle`). Un error de una línea: `campos.detalle` con el texto ("La línea 2: la cantidad tiene que ser mayor que 0.").
+- 409 `STOCK_INSUFICIENTE` si una `NC` devuelve más unidades de las que le quedan al lote de la compra relacionada (ya se vendieron): `mensaje` con el texto de la base ("Del lote 12 solo quedan 1 unidades: no se pueden devolver 3"). Nada se guarda.
 - 409 `COMPRA_DUPLICADA` si ya hay una compra no anulada con ese `numeroDocumentoProveedor` del mismo proveedor o con ese `codigoGeneracionProveedor`: `campos.numeroDocumentoProveedor`, e `idCompraExistente`.
+
+### Nota de crédito con devolución (migración 1.5)
+
+En una `NC` las líneas **con producto** son las unidades que se devuelven al proveedor; las líneas **sin producto** son rebajas de precio y no mueven unidades. Una `ND` solo lleva líneas sin producto.
+
+- `idProducto` tiene que ser uno de los productos de la compra relacionada (`idCompraRelacionada`), y `cantidad` no puede pasar de lo que esa compra trajo ni de lo que queda de su lote (`cantidadDisponible`). Si no, 400 con `campos.detalle`.
+- No crean lote. La API guarda la `NC` y sus líneas y, **en la misma transacción**, llama `fn_registrar_devolucion_proveedor(idCompra, idUsuario)`: cada línea con producto saca sus unidades del lote que creó la compra relacionada, **al costo de ese lote**, y deja un movimiento `DEVOLUCION_PROVEEDOR` (negativo, con `id_detalle_compra` de la línea de la `NC`) en el kardex.
+- Si el lote ya no tiene las unidades (se vendieron), la función se detiene, la transacción se revierte y la API responde 409 `STOCK_INSUFICIENTE`.
+- La `NC` sigue restando del total del mes y del libro de compras; el kardex trae la `NC` como documento (ver "Registro de control de inventarios").
 
 ## Libros de IVA (vistas `v_anexo_*`, migración 1.3)
 
@@ -632,11 +642,11 @@ Los datos salen de la vista SQL `v_registro_inventario` (modelo v1.4): una fila 
 - `saldoInicial` = el saldo (`saldoUnidades`, `saldoValor`) de la última fila del producto **antes** del mes; `0` y `0` si no hay ninguna.
 - `movimientos`: solo las filas del mes, por fecha y luego por `idMovimiento`. `correlativo` es por producto y vuelve a 1 cada año (no cada mes). Cada salida trae una fila por lote que toca (PEPS), con el `costoUnitario` de ese lote.
 - Entradas: `proveedor`, `nacionalidadProveedor` (de `tb_proveedores.nacionalidad`), `tipoDocumento` y `numeroDocumento` son los de la compra; en ventas, el documento es el DTE y no hay proveedor; en ajustes son `null`, salvo la devolución al proveedor, que trae la nota de crédito del proveedor. `descripcionOperacion` lleva el motivo del ajuste después de dos puntos (`Ajuste: producto dañado`, `Ajuste por inventario físico: …`). `referenciaCosto`: en compras, el libro de compras del mes en que se declaró (`Libro de compras MM/AAAA, compra C-0157`); en las demás filas, el lote PEPS y su compra (`Lote 1 (compra C-0142)`, o solo `Lote 7` si nació de un ajuste).
-- `tipo`: los del kardex (`ENTRADA_COMPRA` · `ENTRADA_AJUSTE` · `SALIDA_VENTA` · `SALIDA_AJUSTE` · `USO_SALON` · `DEVOLUCION_ANULACION` · `DEVOLUCION_NC` · `DEVOLUCION_FACTURA`). `tipoDocumento`: `CCF`, `FACTURA`, `NC`, `ND` u `OTRO`. Las unidades y los valores van siempre como número (0 donde no aplica); valores en dólares con 2 decimales. Los saldos son acumulados: la última fila coincide con la suma de `cantidadDisponible` de los lotes (y su valor al costo) al cierre del mes.
+- `tipo`: los del kardex (`ENTRADA_COMPRA` · `ENTRADA_AJUSTE` · `SALIDA_VENTA` · `SALIDA_AJUSTE` · `USO_SALON` · `DEVOLUCION_ANULACION` · `DEVOLUCION_NC` · `DEVOLUCION_FACTURA` · `DEVOLUCION_PROVEEDOR`). `DEVOLUCION_PROVEEDOR` ("Devolución a proveedor", migración 1.5) es una salida al costo del lote de la compra que corrige la nota: trae como documento la `NC` del proveedor (`tipoDocumento` `NC`, su `numeroDocumento` y `proveedor`). `tipoDocumento`: `CCF`, `FACTURA`, `NC`, `ND` u `OTRO`. Las unidades y los valores van siempre como número (0 donde no aplica); valores en dólares con 2 decimales. Los saldos son acumulados: la última fila coincide con la suma de `cantidadDisponible` de los lotes (y su valor al costo) al cierre del mes.
 - `emisor` (`tb_emisores`, NIT y NRC solo dígitos) va en el encabezado de cada folio impreso (`registro-inventario-imprimir.html`).
 - `periodo` inválido o en el futuro → 400 `campos.periodo`. `idProducto` que no existe → 404.
 
-## Inventario físico (`tb_inventarios_fisicos`, `tb_inventario_fisico_conteo`, vista `v_acta_inventario_fisico`, modelo v1.4)
+## Inventario físico (`tb_inventarios_fisicos`, `tb_inventario_fisico_conteo`, vistas `v_acta_inventario_fisico` y `v_existencia_al_corte`, modelo v1.5)
 
 Conteo físico del inventario al inicio del negocio y al cierre de cada ejercicio (31 de diciembre) con su acta firmada (art. 142 del Código Tributario); el comparativo contra el registro de control es el del art. 81 del Reglamento. Roles: `ADMINISTRADOR` y `CONTADOR` crean, editan y cierran; `AUDITOR` solo lee (los `POST`/`PUT` le dan 403); los demás roles, 403 en todo.
 
@@ -673,21 +683,24 @@ Body `{ "fechaCorte": "2026-12-31" }`. 201 con el conteo nuevo (`BORRADOR`, form
 }
 ```
 
-- `conteo`: un elemento por producto activo, por categoría y nombre. En `BORRADOR`, `existenciaSistema` y `valorSistema` (valor PEPS de esa existencia, sin IVA) son los **actuales**; al cerrar quedan **congelados** (`tb_inventario_fisico_conteo.existencia_sistema`) y un conteo `CERRADO` no vuelve a cambiar. `cantidadContada` es `null` si aún no se cuenta; `nota` puede ser `null`.
+- `conteo`: un elemento por producto activo, por categoría y nombre. `existenciaSistema` y `valorSistema` (valor al costo de esa existencia, sin IVA) son la **existencia al final del día de `fechaCorte`** (`v_existencia_al_corte`, calculada desde el kardex sin contar los ajustes del propio conteo), **no la de hoy**, tanto en `BORRADOR` como `CERRADO`; al cerrar quedan **congelados** (`tb_inventario_fisico_conteo.existencia_sistema`) y un conteo `CERRADO` no vuelve a cambiar. `cantidadContada` es `null` si aún no se cuenta; `nota` puede ser `null`.
 - `acta` (solo `CERRADO`): filas de `v_acta_inventario_fisico` en camelCase, una por lote vivo al final del día de `fechaCorte`, por categoría y producto. `costoUnitario` sin IVA; `valor` = `cantidad × costoUnitario`; `referenciaCosto`: `Libro de compras 12/2026, compra C-0157` o `Lote 7 (ajuste)`.
 - `ajustes` (solo `CERRADO`): por cada producto con diferencia, `cantidad` firmada (`cantidadContada − existenciaSistema`) y `valor` firmado (PEPS: lo que sale se toma de los lotes más viejos; lo que entra, al último costo).
 - 404 si no existe.
 
 ### `PUT /api/inventario-fisico/{id}/conteo`
 
-Body: `[ { "idProducto": 1, "cantidadContada": 3, "nota": "Un frasco estaba en bodega" } ]` (puede traer solo los productos que cambiaron; `cantidadContada` entero ≥ 0, `nota` opcional hasta 250). Responde 200 con el `GET /{id}`. 409 si el conteo ya está `CERRADO`; 400 `campos` si una cantidad es inválida o un `idProducto` no existe.
+Body: `[ { "idProducto": 1, "cantidadContada": 3, "nota": "Un frasco estaba en bodega" } ]` (puede traer solo los productos que cambiaron; `cantidadContada` entero ≥ 0, `nota` opcional hasta 150). Responde 200 con el `GET /{id}`. 409 si el conteo ya está `CERRADO`; 400 `campos` si una cantidad es inválida o un `idProducto` no existe.
 
 ### `POST /api/inventario-fisico/{id}/cerrar`
 
-Body `{ "observaciones": "..." }` (opcional). En **una transacción**: guarda `existencia_sistema`, inserta un ajuste PEPS en el kardex por cada diferencia (fechado `fechaCorte` 23:59:59, hora de El Salvador, con `id_inventario_fisico`) y pasa a `CERRADO` (`cerradoEn`, `id_usuario_cierra`). Responde 200 con el `GET /{id}`.
+Body `{ "observaciones": "..." }` (opcional). Una sola llamada a `fn_cerrar_inventario_fisico(id, idUsuario, observaciones)`, en **una transacción**: guarda `existencia_sistema`, inserta un ajuste PEPS en el kardex por cada diferencia (fechado `fechaCorte` 23:59:59, hora de El Salvador, con `id_inventario_fisico`) y pasa a `CERRADO` (`cerradoEn`, `id_usuario_cierra`). Responde 200 con el `GET /{id}`.
 
 - 400 `campos.conteo` con la lista de productos activos sin contar (`[{ "idProducto": 4, "nombreProducto": "..." }]`) si falta alguno.
 - 409 si ya está `CERRADO`.
+- 409 si lo que hay que sacar ya se vendió o ajustó después del corte ("Producto 3: faltan 2 unidades que ya se vendieron o ajustaron después del corte; revise esos movimientos antes de cerrar"). No cambia nada.
+
+**Cerrar después de la fecha de corte está permitido** (p. ej. contar el 31 de diciembre y cerrar en enero, con ventas en medio): la diferencia se calcula contra la existencia del día de corte y los ajustes quedan fechados ese día a las 23:59:59, así que el kardex y el acta cuadran con lo contado. Un faltante sale por PEPS de los lotes que tenían existencia al corte, sin pasar de lo que les queda hoy; un sobrante entra como lote nuevo al costo del último lote anterior al corte (si nunca se compró antes del corte, 409 por falta de costo).
 
 ## Configuración (`tb_emisores`, `tb_parametros`, `tb_horarios`, `tb_formas_pago`, `tb_usuarios`)
 

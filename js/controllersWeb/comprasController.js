@@ -41,6 +41,8 @@ const estado = {
   siguienteGasto: 1,
   rentaTocada: false, // si la usuaria cambió la clasificación para renta, ya no se propone sola
   comprasProveedor: [], // para elegir la compra que corrige una nota
+  relacionada: null, // NC: la compra que corrige (con su detalle): de ahí salen los productos que se pueden devolver
+  modoLineas: 'compra', // 'compra' (productos que llegan) o 'devolucion' (NC: productos que salen)
   idLineaActual: null,
 };
 
@@ -215,12 +217,14 @@ async function mostrarCompra(idCompra, aviso = '') {
   const productos = c.detalle.filter((d) => d.idProducto).length;
   let titulo = nota ? 'Conceptos' : 'Gastos <span class="font-normal">no entran al inventario</span>';
   if (productos) titulo = productos === c.detalle.length ? 'Productos <span class="font-normal">cada uno creó un lote</span>' : 'Detalle <span class="font-normal">cada producto creó un lote</span>';
+  const devolucion = c.tipoDocumentoProveedor === 'NC';
+  if (productos && devolucion) titulo = 'Devolución <span class="font-normal">salió del lote de la compra que corrige</span>';
   const htmlDetalle = (d) => (d.idProducto ? `
         <li class="grid grid-cols-[1fr_auto] gap-x-3 border-b border-neutro-100 py-2 tabular-nums">
           <a class="font-semibold underline decoration-borde-fuerte underline-offset-2" href="inventario.html?idProducto=${d.idProducto}">${escapar(d.nombreProducto)}</a>
           <b class="text-right font-semibold">${dinero(d.subtotal)}</b>
           <small class="text-13 text-texto-secundario">${numero(d.cantidad)} × ${dinero(d.costoUnitario)}</small>
-          <small class="text-right text-13 text-texto-secundario">quedan <b class="font-semibold text-texto-principal">${numero(d.cantidadDisponible)}</b> de ${numero(d.cantidad)}</small>
+          <small class="text-right text-13 text-texto-secundario">${devolucion ? `al proveedor · el lote tiene <b class="font-semibold text-texto-principal">${numero(d.cantidadDisponible)}</b>` : `quedan <b class="font-semibold text-texto-principal">${numero(d.cantidadDisponible)}</b> de ${numero(d.cantidad)}`}</small>
         </li>` : `
         <li class="grid grid-cols-[1fr_auto] gap-x-3 border-b border-neutro-100 py-2 tabular-nums">
           <b class="min-w-0 font-semibold" data-campo="descripcion">${escapar(d.descripcion)}</b><b class="text-right font-semibold">${dinero(d.subtotal)}</b>
@@ -407,7 +411,7 @@ function mostrarFormularioProveedor(proveedor = null) {
           ${campo({ nombre: 'nrc', columna: 'nrc', etiqueta: 'NRC', obligatorio: true, control: entrada('nrc', p.nrc && nrcConGuion(p.nrc), 'maxlength="9" inputmode="numeric" autocomplete="off" class="tabular-nums" placeholder="000000-0" aria-describedby="ayuda-nrc"') })}
         </div>
         <p class="campo-ayuda -mt-3" id="ayuda-nrc">Sin el NRC no se puede tomar el IVA como crédito fiscal.</p>
-        ${campo({ nombre: 'nacionalidad', columna: 'nacionalidad', etiqueta: 'Nacionalidad', obligatorio: true, control: entrada('nacionalidad', p.nacionalidad ?? 'El Salvador', 'maxlength="60" autocomplete="off"') })}
+        ${campo({ nombre: 'nacionalidad', columna: 'nacionalidad', etiqueta: 'Nacionalidad', obligatorio: true, control: entrada('nacionalidad', p.nacionalidad ?? 'El Salvador', 'maxlength="40" autocomplete="off"') })}
 
         <p class="panel-titulo mt-2 mb-0">Contacto</p>
         ${campo({ nombre: 'contactoNombre', columna: 'contacto_nombre', etiqueta: 'Persona de contacto', control: entrada('contactoNombre', p.contactoNombre, 'maxlength="100" autocomplete="off"') })}
@@ -523,12 +527,12 @@ function cambioCosto(producto, costo) {
   return diferencia === 0 ? null : diferencia;
 }
 
-function htmlLinea({ producto: p, cantidad, costo }) {
+function htmlLinea({ producto: p, cantidad, costo, comprada }) {
   const id = p.idProducto;
   return `<li class="fila-linea" data-linea="${id}">
-    <div class="col-span-2 min-w-0 md:col-span-1"><b class="block truncate font-semibold">${escapar(p.nombreProducto)}</b>${htmlExistencia(p)}</div>
+    <div class="col-span-2 min-w-0 md:col-span-1"><b class="block truncate font-semibold">${escapar(p.nombreProducto)}</b>${comprada ? `<small class="text-13 text-texto-secundario">trajo ${numero(comprada.cantidad)} · el lote tiene ${numero(comprada.cantidadDisponible)}</small>` : htmlExistencia(p)}</div>
     <label class="block"><span class="mb-1 block text-13 text-texto-secundario md:sr-only">Cantidad</span>
-      <div class="campo-caja h-10 min-h-0"><input name="cantidad-${id}" id="f-cantidad-${id}" value="${escapar(cantidad)}" type="number" inputmode="numeric" min="1" max="9999" step="1" class="text-right tabular-nums" aria-label="Cantidad de ${escapar(p.nombreProducto)}"></div></label>
+      <div class="campo-caja h-10 min-h-0"><input name="cantidad-${id}" id="f-cantidad-${id}" value="${escapar(cantidad)}" type="number" inputmode="numeric" min="1" max="${comprada ? comprada.cantidad : 9999}" step="1" class="text-right tabular-nums" aria-label="Cantidad de ${escapar(p.nombreProducto)}"></div></label>
     <label class="block"><span class="mb-1 block text-13 text-texto-secundario md:sr-only">Costo c/u sin IVA</span>
       <div class="campo-caja h-10 min-h-0"><span class="text-texto-secundario">$</span><input name="costo-${id}" id="f-costo-${id}" value="${escapar(costo)}" type="number" inputmode="decimal" min="0" step="0.0001" class="text-right tabular-nums" aria-label="Costo de ${escapar(p.nombreProducto)} sin IVA"></div>
       <small class="mt-1 block text-right text-xs font-semibold text-estado-aviso" data-cambio></small></label>
@@ -628,7 +632,7 @@ function pintarRenta() {
 function totalesFormulario() {
   const form = $('form-compra');
   const tipo = form.elements.tipoDocumentoProveedor.value;
-  const productos = esNota(tipo) ? [] : lineasListas().map((l) => ({ cantidad: l.n, costoUnitario: l.c }));
+  const productos = tipo === 'ND' ? [] : lineasListas().map((l) => ({ cantidad: l.n, costoUnitario: l.c }));
   const gastos = gastosListos().map((g) => ({ cantidad: 1, costoUnitario: g.m }));
   const exentas = comoNumero(form.elements.comprasExentas.value);
   return totalesCompra([...productos, ...gastos], estado.ivaPct, tipo, {
@@ -639,12 +643,12 @@ function totalesFormulario() {
 function pintarResumen() {
   const tipo = $('form-compra').elements.tipoDocumentoProveedor.value;
   const nota = esNota(tipo);
-  const unidades = nota ? 0 : lineasListas().reduce((s, l) => s + l.n, 0);
+  const unidades = tipo === 'ND' ? 0 : lineasListas().reduce((s, l) => s + l.n, 0);
   const { subtotalSinIva, comprasExentas, iva, ivaPercibido, total } = totalesFormulario();
   const fila = (etiqueta, valor, clase = 'text-texto-secundario') => `<li class="flex justify-between gap-3 py-1 ${clase}"><span>${etiqueta}</span><span>${valor}</span></li>`;
   const cuenta = [];
-  if (!nota && (estado.lineas.length || !estado.gastos.length)) cuenta.push(`${plural(estado.lineas.length, 'producto', 'productos')} · ${plural(unidades, 'unidad', 'unidades')}`);
-  if (nota || estado.gastos.length) cuenta.push(nota ? plural(estado.gastos.length, 'concepto', 'conceptos') : plural(estado.gastos.length, 'gasto', 'gastos'));
+  if (tipo !== 'ND' && (estado.lineas.length || !estado.gastos.length)) cuenta.push(`${plural(estado.lineas.length, 'producto', 'productos')} · ${plural(unidades, 'unidad', 'unidades')}`);
+  if (estado.gastos.length || (nota && (tipo === 'ND' || !estado.lineas.length))) cuenta.push(nota ? plural(estado.gastos.length, 'concepto', 'conceptos') : plural(estado.gastos.length, 'gasto', 'gastos'));
   $('resumen-compra').innerHTML = `
     <p class="mb-2 text-texto-secundario">${cuenta.join(' · ')}</p>
     <ul class="tabular-nums">
@@ -662,8 +666,19 @@ function pintarResumen() {
 function pintarLotes() {
   const caja = $('lotes-compra');
   const linea = estado.lineas.find((l) => l.producto.idProducto === estado.idLineaActual) ?? estado.lineas.at(-1);
-  if (esNota($('form-compra').elements.tipoDocumentoProveedor.value)) {
-    caja.innerHTML = '<p class="text-texto-secundario">Una nota del proveedor no mueve el inventario.</p>';
+  const tipo = $('form-compra').elements.tipoDocumentoProveedor.value;
+  if (tipo === 'ND') {
+    caja.innerHTML = '<p class="text-texto-secundario">Una nota de débito no mueve el inventario.</p>';
+    return;
+  }
+  if (tipo === 'NC') {
+    const n = comoNumero(linea?.cantidad);
+    const quedan = linea?.comprada.cantidadDisponible;
+    caja.innerHTML = linea ? `
+      <h3 class="panel-titulo">Sale del lote <span class="truncate pl-2 font-normal">${escapar(linea.producto.nombreProducto)}</span></h3>
+      <p class="flex justify-between text-texto-secundario"><span>Lote de la compra ${escapar(estado.relacionada.numeroCompra)}</span><b class="font-semibold text-texto-principal tabular-nums">${numero(quedan)} → ${cantidadValida(n) && n <= quedan ? numero(quedan - n) : '…'}</b></p>
+      ${cantidadValida(n) && n > quedan ? `<div class="aviso aviso-aviso mt-3">${icono('advertencia')}<p><b class="block font-semibold">El lote solo tiene ${numero(quedan)}</b>El resto ya se vendió: no se puede devolver más de lo que queda.</p></div>` : ''}`
+      : '<p class="text-texto-secundario">Sin productos, la nota es una rebaja de precio: no mueve unidades.</p>';
     return;
   }
   if (!linea) {
@@ -736,16 +751,53 @@ async function cargarRelacionadas() {
     : '<option value="">Este proveedor no tiene créditos fiscales</option>';
 }
 
-/** La nota toma la clasificación para renta de la compra que corrige. */
+/** La nota toma la clasificación para renta de la compra que corrige; una NC además ofrece sus productos para devolver. */
 async function rentaDeRelacionada(idCompra) {
   estado.rentaRelacionada = null;
+  estado.relacionada = null;
   if (idCompra) {
     const c = await obtenerCompra(idCompra);
+    estado.relacionada = c;
     estado.rentaRelacionada = {
       tipoOperacionRenta: c.tipoOperacionRenta, clasificacionRenta: c.clasificacionRenta, sectorRenta: c.sectorRenta, tipoCostoGasto: c.tipoCostoGasto,
     };
   }
+  if (estado.modoLineas === 'devolucion') {
+    // Solo se puede devolver lo que trajo la compra elegida
+    const trajo = (l) => estado.relacionada?.detalle.find((d) => d.idProducto === l.producto.idProducto);
+    estado.lineas = estado.lineas.filter(trajo).map((l) => ({ ...l, comprada: trajo(l) }));
+    pintarLineas();
+    pintarDevolvibles();
+  }
   pintarRenta();
+}
+
+/** NC: los productos de la compra que corrige, para elegir cuáles se devuelven. */
+function pintarDevolvibles() {
+  const ya = new Set(estado.lineas.map((l) => l.producto.idProducto));
+  const c = estado.relacionada;
+  const ofrecidos = c ? c.detalle.filter((d) => d.idProducto && !ya.has(d.idProducto)) : [];
+  let html = '';
+  if (!c) html = '<p class="text-sm text-texto-secundario">Elija arriba la compra que corrige para ver los productos que trajo.</p>';
+  else if (!c.detalle.some((d) => d.idProducto)) html = `<p class="text-sm text-texto-secundario">La compra ${escapar(c.numeroCompra)} no trajo productos: la nota solo puede ser una rebaja de precio.</p>`;
+  else if (ofrecidos.length) {
+    html = `<p class="mb-1 text-13 text-texto-secundario">Productos de la compra ${escapar(c.numeroCompra)}: elija los que devuelve</p><ul>${ofrecidos.map((d) => `
+      <li><button type="button" data-accion="devolver" data-id="${d.idProducto}" class="flex w-full cursor-pointer justify-between gap-3 border-b border-neutro-100 py-2 text-left text-sm tabular-nums hover:bg-fondo-sutil">
+        <b class="min-w-0 truncate font-semibold">${escapar(d.nombreProducto)}</b><small class="shrink-0 text-13 text-texto-secundario">trajo ${numero(d.cantidad)} · el lote tiene ${numero(d.cantidadDisponible)}</small></button></li>`).join('')}</ul>`;
+  }
+  $('devolvibles').innerHTML = html;
+}
+
+function agregarDevolucion(idProducto) {
+  const d = estado.relacionada?.detalle.find((x) => x.idProducto === Number(idProducto));
+  if (!d || estado.lineas.some((l) => l.producto.idProducto === d.idProducto)) return;
+  // La devolución sale al costo del lote: se propone el de la compra
+  estado.lineas.push({ producto: { idProducto: d.idProducto, nombreProducto: d.nombreProducto, ultimoCosto: null }, cantidad: '', costo: textoCosto(d.costoUnitario), comprada: d });
+  estado.idLineaActual = d.idProducto;
+  estado.sucio = true;
+  pintarLineas();
+  pintarDevolvibles();
+  $(`f-cantidad-${d.idProducto}`).focus();
 }
 
 /** Muestra solo los campos que pide el tipo de documento elegido. */
@@ -761,11 +813,27 @@ function pintarDocumento() {
   caja('iva_percibido').hidden = !conIva(tipo);
   $('etiqueta-documento').innerHTML = `${etiquetaDocumento(tipo, impreso)} ${tipo === 'OTRO' ? '<span class="opcional">opcional</span>' : '<span class="text-estado-error" aria-hidden="true">*</span>'}`;
   $('ayuda-idProveedor').innerHTML = ayudaProveedor(form);
-  $('tarjeta-productos').hidden = esNota(tipo);
+  const devolucion = tipo === 'NC';
+  if ((devolucion ? 'devolucion' : 'compra') !== estado.modoLineas) {
+    // Productos que llegan y productos que se devuelven no se mezclan
+    estado.modoLineas = devolucion ? 'devolucion' : 'compra';
+    estado.lineas = [];
+    pintarLineas();
+  }
+  $('tarjeta-productos').hidden = tipo === 'ND';
+  $('titulo-productos').textContent = devolucion ? 'Productos que se devuelven' : 'Productos que llegaron';
+  $('buscador-productos').hidden = devolucion;
+  $('devolvibles').hidden = !devolucion;
+  $('info-productos').textContent = devolucion
+    ? 'Lo que se devuelve sale del lote de esa compra, a su costo. Una nota no crea lotes. Si ya se vendió, no se puede devolver.'
+    : 'Cada producto entra como un lote nuevo con su propio costo. Se vende después de los lotes que ya hay (PEPS), así el costo de cada venta es el real.';
+  $('lineas-vacio').textContent = devolucion ? 'Todavía no hay productos devueltos.' : 'Todavía no hay productos. Búsquelos o escanee el código.';
+  if (devolucion) pintarDevolvibles();
   $('titulo-gastos').textContent = esNota(tipo) ? 'Conceptos de la nota' : 'Gastos del local';
-  $('ayuda-gastos').textContent = esNota(tipo)
-    ? 'Una nota no mueve el inventario: si se devolvió producto, regístralo con un ajuste en Inventario.'
-    : 'Alquiler, luz, agua, mantenimiento: no entran al inventario.';
+  $('ayuda-gastos').textContent = {
+    NC: 'Rebajas de precio (descuentos): no mueven unidades. Lo que se devuelve va arriba, en productos.',
+    ND: 'Una nota de débito solo lleva conceptos (recargos, intereses): no mueve el inventario.',
+  }[tipo] ?? 'Alquiler, luz, agua, mantenimiento: no entran al inventario.';
   form.elements.agregarGasto.lastChild.textContent = esNota(tipo) ? 'Agregar concepto' : 'Agregar gasto';
   pintarPeriodos();
   if (esNota(tipo)) cargarRelacionadas().catch(() => {});
@@ -779,6 +847,8 @@ async function abrirRegistrar({ idProveedor = null, idProductos = [] } = {}) {
   estado.siguienteGasto = 1;
   estado.rentaTocada = false;
   estado.rentaRelacionada = null;
+  estado.relacionada = null;
+  estado.modoLineas = 'compra';
   estado.idLineaActual = null;
   estado.seleccion = null;
   panel.cerrar();
@@ -823,13 +893,14 @@ async function abrirRegistrar({ idProveedor = null, idProductos = [] } = {}) {
         </div>
 
         <div class="tarjeta rounded-grande p-4 sm:px-6" id="tarjeta-productos">
-          <h3 class="mb-3 font-semibold">Productos que llegaron</h3>
+          <h3 class="mb-3 font-semibold" id="titulo-productos">Productos que llegaron</h3>
           <div id="cabecera-lineas" class="hidden grid-cols-[minmax(0,1fr)_88px_136px_96px_32px] gap-x-3 border-b border-borde-default pb-2 text-13 font-semibold text-texto-secundario" aria-hidden="true">
             <span>Producto</span><span>Cantidad</span><span>Costo c/u sin IVA</span><span class="text-right">Subtotal</span><span></span>
           </div>
           <ul id="lineas"></ul>
           <p id="lineas-vacio" class="py-2 text-sm text-texto-secundario">Todavía no hay productos. Búsquelos o escanee el código.</p>
-          <div class="relative mt-3 sm:max-w-sm" data-campo="detalle">
+          <div id="devolvibles" class="mt-3" hidden></div>
+          <div class="relative mt-3 sm:max-w-sm" data-campo="detalle" id="buscador-productos">
             <label class="campo-caja h-10 min-h-0">
               ${icono('buscar')}
               <span class="sr-only">Agregar producto</span>
@@ -838,7 +909,7 @@ async function abrirRegistrar({ idProveedor = null, idProductos = [] } = {}) {
             <ul id="sugerencias" role="listbox" class="absolute inset-x-0 top-full z-10 mt-1 hidden overflow-hidden rounded-chico border border-borde-default bg-fondo-superficie shadow-lg"></ul>
             <p class="campo-error hidden" id="error-agregar"></p>
           </div>
-          <p class="mt-4 flex gap-2 text-sm text-texto-secundario">${icono('info', 'mt-0.5 size-[18px] text-estado-info')}<span>Cada producto entra como un lote nuevo con su propio costo. Se vende después de los lotes que ya hay (PEPS), así el costo de cada venta es el real.</span></p>
+          <p class="mt-4 flex gap-2 text-sm text-texto-secundario">${icono('info', 'mt-0.5 size-[18px] text-estado-info')}<span id="info-productos"></span></p>
         </div>
 
         <div class="tarjeta rounded-grande p-4 sm:px-6" data-campo="descripcion">
@@ -980,8 +1051,8 @@ function leerCompra(form) {
     percepcion: conIva(tipo) && form.elements.percepcion.checked,
     ...leerRenta(),
     detalle: [
-      // Una nota no lleva productos: aunque haya quedado alguno en la lista, no se manda
-      ...(nota ? [] : estado.lineas.map((l) => ({ idProducto: l.producto.idProducto, cantidad: comoNumero(l.cantidad), costoUnitario: comoNumero(l.costo) }))),
+      // Una nota de débito no lleva productos: aunque haya quedado alguno en la lista, no se manda
+      ...(tipo === 'ND' ? [] : estado.lineas.map((l) => ({ idProducto: l.producto.idProducto, cantidad: comoNumero(l.cantidad), costoUnitario: comoNumero(l.costo) }))),
       ...estado.gastos.map((g) => ({ clave: g.clave, descripcion: g.descripcion.trim().replace(/\s+/g, ' '), cantidad: 1, costoUnitario: comoNumero(g.monto) })),
     ],
   };
@@ -996,12 +1067,18 @@ function leerCompra(form) {
   if (nota && !datos.idCompraRelacionada) errores.idCompraRelacionada = 'Elija el crédito fiscal que corrige esta nota.';
   if (v('comprasExentas') && !montoValido(exentas)) errores.comprasExentas = 'Escriba un monto de hasta 2 decimales.';
   if (!datos.detalle.length) {
-    if (nota) errores.agregarGasto = 'Agregue al menos un concepto.';
+    if (tipo === 'NC') errores.agregarGasto = 'Agregue un producto devuelto o un concepto.';
+    else if (nota) errores.agregarGasto = 'Agregue al menos un concepto.';
     else errores.agregar = 'Agregue al menos un producto o un gasto.';
   }
   for (const d of datos.detalle) {
     if (d.idProducto) {
       if (!cantidadValida(d.cantidad)) errores[`cantidad-${d.idProducto}`] = 'La cantidad es un entero de 1 a 9999.';
+      else if (tipo === 'NC') {
+        const trajo = estado.relacionada?.detalle.find((x) => x.idProducto === d.idProducto)?.cantidad;
+        if (trajo === undefined) errores[`cantidad-${d.idProducto}`] = 'Ese producto no viene en la compra que corrige.';
+        else if (d.cantidad > trajo) errores[`cantidad-${d.idProducto}`] = `La compra trajo ${numero(trajo)}: no puede devolver más.`;
+      }
       if (!costoValido(d.costoUnitario)) errores[`costo-${d.idProducto}`] = 'Escriba el costo sin IVA (hasta 4 decimales).';
     } else {
       if (!d.descripcion) errores[`descripcion-${d.clave}`] = 'Escriba qué se pagó.';
@@ -1032,7 +1109,7 @@ async function enviarCompra(evento) {
     cambiarVista('compras');
     cargarAvisoBajoMinimo().catch(() => {});
     recargarProveedores();
-    const subio = compra.detalle.some((d) => d.idProducto) ? ' La existencia ya subió.' : '';
+    const subio = compra.detalle.some((d) => d.idProducto) ? ` La existencia ya ${compra.tipoDocumentoProveedor === 'NC' ? 'bajó' : 'subió'}.` : '';
     await mostrarCompra(compra.idCompra, `Compra ${compra.numeroCompra} guardada.${subio}`);
   } catch (error) {
     if (error.detalle?.campos) mostrarErrores(form, error.detalle.campos);
@@ -1073,7 +1150,11 @@ function eventosRegistrar() {
     }
     if (nombre === 'idCompraRelacionada') rentaDeRelacionada(e.target.value).catch(() => {});
     if (['idProveedor', 'fechaCompra', 'tipoDocumentoProveedor', 'claseImpreso'].includes(nombre)) {
-      if (nombre === 'idProveedor' || nombre === 'tipoDocumentoProveedor') estado.rentaRelacionada = null;
+      if (nombre === 'idProveedor' || nombre === 'tipoDocumentoProveedor') {
+        estado.rentaRelacionada = null;
+        estado.relacionada = null;
+        if (estado.modoLineas === 'devolucion' && estado.lineas.length) { estado.lineas = []; pintarLineas(); }
+      }
       pintarDocumento();
       return;
     }
@@ -1103,11 +1184,15 @@ function eventosRegistrar() {
         cerrarSugerencias();
         agregarLinea(boton.dataset.id);
         break;
+      case 'devolver':
+        agregarDevolucion(boton.dataset.id);
+        break;
       case 'quitar':
         estado.lineas = estado.lineas.filter((l) => l.producto.idProducto !== Number(boton.dataset.id));
         estado.sucio = true;
         pintarLineas();
-        $('f-agregar').focus();
+        if (estado.modoLineas === 'devolucion') pintarDevolvibles();
+        else $('f-agregar').focus();
         break;
       case 'agregar-gasto':
         agregarGasto();

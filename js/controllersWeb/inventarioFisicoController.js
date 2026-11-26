@@ -110,7 +110,7 @@ function filaConteo(p) {
       <input data-contada type="number" min="0" step="1" inputmode="numeric" value="${f.cantidadContada ?? ''}" ${lectura} class="w-full text-right"></label>`, 'text-right')}
     ${td('', 'text-right font-semibold whitespace-nowrap')}
     ${td(`<label class="campo-caja h-9 min-h-0 w-full min-w-40 text-sm"><span class="sr-only">Nota de ${escapar(p.nombreProducto)}</span>
-      <input data-nota type="text" maxlength="250" value="${escapar(f.nota ?? '')}" placeholder="¿Por qué hay diferencia?" ${lectura} class="w-full"></label>`)}
+      <input data-nota type="text" maxlength="150" value="${escapar(f.nota ?? '')}" placeholder="¿Por qué hay diferencia?" ${lectura} class="w-full"></label>`)}
   </tr>`;
 }
 

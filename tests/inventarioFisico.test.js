@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { clonarLotes, ajustarLotes, aplicarConteo, armarActa } from '../js/mocks/inventarioFisico.js';
+import { clonarLotes, ajustarLotes, aplicarConteo, armarActa, existenciaAlCorte } from '../js/mocks/inventarioFisico.js';
 import { PRODUCTOS_PRUEBA, MARCAS_PRUEBA, CATEGORIAS_PRUEBA } from '../js/mocks/inventario.js';
 import { existencia, valorAlCosto } from '../js/utils/peps.js';
 import { centavos } from '../js/utils/calculos.js';
+import { fechaIso } from '../js/utils/formato.js';
 
 const compras = [{ numeroCompra: 'C-0157', periodoIva: '2026-12-01', fechaCompra: '2026-12-03' }];
 const catalogos = { productos: PRODUCTOS_PRUEBA, compras, marcas: MARCAS_PRUEBA, categorias: CATEGORIAS_PRUEBA, unidades: [{ codUnidadMedida: 59, nombre: 'Unidad' }] };
@@ -63,4 +64,27 @@ test('las descargas usan descargar() de xlsx.js: nadie más arma el Blob', () =>
   for (const nombre of readdirSync(dir).filter((n) => n.endsWith('.js'))) {
     assert.ok(!readFileSync(new URL(nombre, dir), 'utf8').includes('createObjectURL'), nombre);
   }
+});
+
+// --- Existencia al día de corte (migración 1.5) ---------------------------------
+const fechaCorteHace = (dias) => fechaIso(new Date(), -dias);
+const alCorte = (dias) => existenciaAlCorte({ productos: PRODUCTOS_PRUEBA, lotes: clonarLotes(PRODUCTOS_PRUEBA), compras: [], fechaCorte: fechaCorteHace(dias) });
+
+test('la existencia del sistema es la del final del día de corte, no la de hoy', () => {
+  assert.deepEqual(alCorte(0).get(1), { existenciaSistema: 2, valorSistema: 13.6 }); // hoy = lo que hay
+  assert.deepEqual(alCorte(45).get(1), { existenciaSistema: 9, valorSistema: 58.5 }); // 12 del lote viejo − 3 ventas (hace 55, 50 y 45 días); el lote nuevo aún no llegaba
+  assert.equal(alCorte(31).get(1).existenciaSistema, 6); // el lote nuevo entra a los 30 días
+  assert.equal(alCorte(70).get(1).existenciaSistema, 0, 'antes de la primera compra no había nada');
+});
+
+test('cerrar tarde: el faltante se calcula contra el corte y se rechaza si ya se vendió', () => {
+  const lotes = clonarLotes(PRODUCTOS_PRUEBA);
+  const sistema = alCorte(45);
+  const cerrarCon = (contada1) => aplicarConteo({
+    productos: PRODUCTOS_PRUEBA, lotes, fechaCorte: fechaCorteHace(45), idLoteInicial: 1000, alCorte: sistema,
+    contadas: new Map(activos.map((p) => [p.idProducto, p.idProducto === 1 ? contada1 : sistema.get(p.idProducto).existenciaSistema])),
+  });
+  assert.equal(cerrarCon(9).ajustes.length, 0, 'lo contado coincide con el corte: no hay ajuste aunque hoy haya 2');
+  assert.deepEqual(cerrarCon(11).ajustes.map((a) => [a.idProducto, a.cantidad]), [[1, 2]]);
+  assert.throws(() => cerrarCon(5), /Shampoo hidratante 400 ml: faltan 2 unidades que ya se vendieron/); // contó 5 de 9: salen 4, hoy solo hay 2
 });

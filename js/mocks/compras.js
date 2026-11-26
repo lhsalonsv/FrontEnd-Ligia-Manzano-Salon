@@ -47,3 +47,38 @@ export const PROVEEDORES_PRUEBA = [
 
 /** Qué proveedor surte cada marca del inventario de prueba (idMarca → idProveedor). */
 export const PROVEEDOR_POR_MARCA = { 1: 1, 2: 4, 3: 3, 4: 2 };
+
+/**
+ * Nota de crédito del proveedor con líneas de producto (migración 1.5): las reglas de fn_registrar_devolucion_proveedor.
+ * Cada producto sale del lote que creó la compra relacionada. `campos` = 400, `conflicto` = 409 STOCK_INSUFICIENTE.
+ * @param {{ numeroCompra: string, lineas: object[] }} relacionada la compra que corrige (lineas con idProducto, idLote, cantidad)
+ * @param {{ idProducto?: number, cantidad: number }[]} detalle
+ * @param {object[]} productos los de js/mocks/inventario.js
+ */
+export function revisarDevolucion(relacionada, detalle, productos) {
+  const campos = {};
+  let conflicto = null;
+  for (const { idProducto, cantidad } of detalle.filter((l) => l.idProducto)) {
+    const nombre = productos.find((p) => p.idProducto === idProducto)?.nombreProducto ?? `El producto ${idProducto}`;
+    const comprada = relacionada.lineas.find((l) => l.idProducto === idProducto);
+    if (!comprada) campos.agregar = `${nombre} no viene en la compra ${relacionada.numeroCompra}.`;
+    else if (cantidad > comprada.cantidad) campos.agregar = `${nombre}: la compra ${relacionada.numeroCompra} trajo ${comprada.cantidad}, no se pueden devolver ${cantidad}.`;
+    else {
+      const lote = productos.find((p) => p.idProducto === idProducto).lotes.find((l) => l.idLote === comprada.idLote);
+      if (!conflicto && lote.cantidadDisponible < cantidad) conflicto = `Del lote ${lote.idLote} solo quedan ${lote.cantidadDisponible} unidades: no se pueden devolver ${cantidad}`;
+    }
+  }
+  return { campos, conflicto };
+}
+
+/** Saca las unidades de sus lotes y deja el movimiento DEVOLUCION_PROVEEDOR. Devuelve el detalle con el `idLote` de cada línea de producto. */
+export function aplicarDevolucion(relacionada, detalle, productos, numeroCompra, fechaHora) {
+  return detalle.map((l) => {
+    if (!l.idProducto) return l;
+    const { idLote } = relacionada.lineas.find((x) => x.idProducto === l.idProducto);
+    const producto = productos.find((p) => p.idProducto === l.idProducto);
+    producto.lotes.find((x) => x.idLote === idLote).cantidadDisponible -= l.cantidad;
+    producto.movimientos.push({ fechaHora, tipo: 'DEVOLUCION_PROVEEDOR', cantidad: -l.cantidad, referencia: numeroCompra, motivo: null, idLote });
+    return { ...l, idLote };
+  });
+}

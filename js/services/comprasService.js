@@ -19,7 +19,7 @@ import { authFetch, ApiError } from '../utils/authFetch.js';
 import { obtenerSesion } from '../utils/session.js';
 import { totalesCompra, centavos, DOCUMENTOS_CON_IVA } from '../utils/calculos.js';
 import { fechaIso } from '../utils/formato.js';
-import { PROVEEDORES_PRUEBA, PROVEEDOR_POR_MARCA } from '../mocks/compras.js';
+import { PROVEEDORES_PRUEBA, PROVEEDOR_POR_MARCA, revisarDevolucion, aplicarDevolucion } from '../mocks/compras.js';
 import { PRODUCTOS_PRUEBA, PARAMETROS_INVENTARIO_PRUEBA } from '../mocks/inventario.js';
 
 export const TAMANO_PAGINA = 50;
@@ -59,7 +59,10 @@ export async function obtenerCompra(idCompra) {
   return authFetch(`/compras/${idCompra}`);
 }
 
-/** La API calcula los totales, crea un lote por línea y lo deja en el kardex y la bitácora. */
+/**
+ * La API calcula los totales, crea un lote por línea y lo deja en el kardex y la bitácora.
+ * Una NC con líneas de producto saca esas unidades del lote de la compra relacionada (409 STOCK_INSUFICIENTE si ya no están).
+ */
 export async function registrarCompra(compra) {
   if (DATOS_PRUEBA.compras) return registrarPrueba(compra);
   return authFetch('/compras', { method: 'POST', cuerpo: compra });
@@ -190,7 +193,7 @@ async function fichaCompraPrueba(idCompra) {
       const producto = PRODUCTOS_PRUEBA.find((p) => p.idProducto === l.idProducto);
       return {
         idProducto: l.idProducto, nombreProducto: producto.nombreProducto, cantidad: l.cantidad, costoUnitario: l.costoUnitario,
-        subtotal: subtotales[i], cantidadDisponible: producto.lotes.find((x) => x.idLote === l.idLote).cantidadDisponible,
+        subtotal: subtotales[i], cantidadDisponible: producto.lotes.find((x) => x.idLote === l.idLote).cantidadDisponible, // en una NC: lo que queda del lote del que salieron
       };
     }),
   };
@@ -205,7 +208,9 @@ function revisarDocumento(d) {
     campos.codigoGeneracionProveedor = 'El código de generación tiene 36 caracteres.';
   }
   if (['NC', 'ND'].includes(d.tipoDocumentoProveedor) !== Boolean(d.idCompraRelacionada)) campos.idCompraRelacionada = 'Elija la compra que corrige.';
-  if (['NC', 'ND'].includes(d.tipoDocumentoProveedor) && d.detalle.some((l) => l.idProducto)) campos.agregar = 'Una nota no lleva productos: la devolución se registra con un ajuste en Inventario.';
+  if (d.tipoDocumentoProveedor === 'ND' && d.detalle.some((l) => l.idProducto)) campos.agregar = 'Una nota de débito no lleva productos.';
+  const relacionada = compras.find((c) => c.idCompra === Number(d.idCompraRelacionada));
+  if (d.tipoDocumentoProveedor === 'NC' && relacionada) Object.assign(campos, revisarDevolucion(relacionada, d.detalle, PRODUCTOS_PRUEBA).campos);
   const minimo = mesDe(d.fechaCompra);
   const tope = new Date(`${minimo}T00:00:00`);
   tope.setMonth(tope.getMonth() + 3);
@@ -229,13 +234,19 @@ async function registrarPrueba(d) {
       codigo: 'COMPRA_DUPLICADA', campos: { numeroDocumentoProveedor: 'Ya está registrado.' }, idCompraExistente: repetida.idCompra,
     });
   }
+  const esNC = d.tipoDocumentoProveedor === 'NC';
+  const relacionada = esNC && compras.find((c) => c.idCompra === Number(d.idCompraRelacionada));
+  const { conflicto } = relacionada ? revisarDevolucion(relacionada, d.detalle, PRODUCTOS_PRUEBA) : {};
+  if (conflicto) throw new ApiError(409, conflicto, { codigo: 'STOCK_INSUFICIENTE', mensaje: conflicto });
   const idCompra = Math.max(...compras.map((c) => c.idCompra)) + 1;
   const numeroCompra = `C-${String(idCompra).padStart(4, '0')}`;
   const ahora = new Date().toISOString();
   let idLote = Math.max(...PRODUCTOS_PRUEBA.flatMap((p) => p.lotes.map((l) => l.idLote)));
   // Solo las líneas de producto crean lote y movimiento de kardex; un gasto no toca el inventario
-  const lineas = d.detalle.map(({ idProducto, descripcion, cantidad, costoUnitario }) => {
+  const detalle = relacionada ? aplicarDevolucion(relacionada, d.detalle, PRODUCTOS_PRUEBA, numeroCompra, ahora) : d.detalle;
+  const lineas = detalle.map(({ idProducto, idLote: loteDevuelto, descripcion, cantidad, costoUnitario }) => {
     if (!idProducto) return { descripcion, cantidad, costoUnitario };
+    if (relacionada) return { idProducto, idLote: loteDevuelto, cantidad, costoUnitario }; // una devolución no crea lote
     const producto = PRODUCTOS_PRUEBA.find((p) => p.idProducto === idProducto);
     producto.lotes.push({ idLote: ++idLote, fechaIngreso: ahora, costoUnitario, cantidadInicial: cantidad, cantidadDisponible: cantidad, numeroCompra });
     producto.movimientos.push({ fechaHora: ahora, tipo: 'ENTRADA_COMPRA', cantidad, referencia: numeroCompra, motivo: null });

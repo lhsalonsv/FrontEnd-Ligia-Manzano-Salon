@@ -6,7 +6,7 @@
  *   POST /api/inventario-fisico {fechaCorte}        → 201 conteo nuevo (BORRADOR)
  *   GET  /api/inventario-fisico/{id}                → { ..., emisor, conteo, acta?, ajustes? }
  *   PUT  /api/inventario-fisico/{id}/conteo         → [{ idProducto, cantidadContada, nota }]
- *   POST /api/inventario-fisico/{id}/cerrar         → { observaciones }
+ *   POST /api/inventario-fisico/{id}/cerrar         → { observaciones }   (existenciaSistema = la del final del día de fechaCorte; se puede cerrar después)
  */
 import { DATOS_PRUEBA } from '../config.js';
 import { authFetch, ApiError } from '../utils/authFetch.js';
@@ -15,7 +15,7 @@ import { fechaIso } from '../utils/formato.js';
 import { PRODUCTOS_PRUEBA } from '../mocks/inventario.js';
 import { UNIDADES_PRUEBA } from '../mocks/catalogos.js';
 import { NEGOCIO_PRUEBA } from '../mocks/configuracion.js';
-import { clonarLotes, aplicarConteo, armarActa, armarConteo } from '../mocks/inventarioFisico.js';
+import { clonarLotes, aplicarConteo, armarActa, armarConteo, existenciaAlCorte } from '../mocks/inventarioFisico.js';
 import { comprasDePrueba } from './comprasService.js';
 import { listarCategorias, listarMarcas } from './inventarioService.js';
 
@@ -67,17 +67,26 @@ function leerSesion() {
   } catch { return null; }
 }
 
+/** Existencia de cada producto al final del día de corte (v_existencia_al_corte): kardex de los lotes de la sesión y los faltantes de conteos cerrados. */
+function sistemaAlCorte(fechaCorte) {
+  const { catalogos, lotes, conteos } = prueba;
+  const salidasPrevias = conteos.filter((c) => c.estado === 'CERRADO').flatMap((c) => c.ajustes.filter((a) => a.cantidad < 0).map((a) => ({
+    idProducto: a.idProducto, fechaHora: `${c.fechaCorte}T23:59:59-06:00`, tipo: 'SALIDA_AJUSTE', cantidad: a.cantidad, referencia: null, motivo: null,
+  })));
+  return existenciaAlCorte({ productos: catalogos.productos, lotes, compras: catalogos.compras, salidasPrevias, fechaCorte });
+}
+
 /** Cierra un conteo con las cantidades contadas: aplica los ajustes a los lotes de la sesión y guarda el acta. */
 function cerrar(conteo, observaciones) {
   const { catalogos } = prueba;
   const contadas = new Map([...conteo.filas].map(([id, f]) => [id, f.cantidadContada]));
-  const r = aplicarConteo({ productos: catalogos.productos, lotes: prueba.lotes, contadas, fechaCorte: conteo.fechaCorte, idLoteInicial: prueba.siguienteIdLote });
+  const r = aplicarConteo({ productos: catalogos.productos, lotes: prueba.lotes, contadas, fechaCorte: conteo.fechaCorte, idLoteInicial: prueba.siguienteIdLote, alCorte: sistemaAlCorte(conteo.fechaCorte) });
   prueba.lotes = r.lotes;
   prueba.siguienteIdLote = r.siguienteIdLote;
   Object.assign(conteo, { estado: 'CERRADO', observaciones, congelado: r.sistema, ajustes: r.ajustes, acta: armarActa({ ...catalogos, lotes: r.lotes }) });
 }
 
-/** Un conteo cerrado el 31 de diciembre pasado, con un sobrante y un faltante, para que la pantalla no arranque vacía. */
+/** Un conteo cerrado hace 20 días (con las compras de prueba ya hechas), con un sobrante y un faltante, para que la pantalla no arranque vacía. */
 async function iniciarPrueba() {
   if (prueba) return prueba;
   const catalogos = { productos: PRODUCTOS_PRUEBA, compras: comprasDePrueba(), marcas: await listarMarcas(), categorias: await listarCategorias(), unidades: UNIDADES_PRUEBA };
@@ -85,9 +94,9 @@ async function iniciarPrueba() {
   const guardado = leerSesion();
   if (guardado) return (prueba = { catalogos, ...guardado });
   prueba = { catalogos, lotes: clonarLotes(PRODUCTOS_PRUEBA), siguienteIdLote: 1000, conteos: [] };
-  const fechaCorte = `${new Date().getFullYear() - 1}-12-31`;
+  const fechaCorte = fechaIso(new Date(), -20);
   const diferencias = { 3: [2, 'Dos frascos estaban en la bodega'], 5: [-1, 'Producto dañado: frasco roto'] }; // idProducto → [diferencia, nota]
-  const filas = new Map(armarConteo({ ...catalogos, lotes: prueba.lotes, filas: new Map(), congelado: null }).map((c) => {
+  const filas = new Map(armarConteo({ ...catalogos, lotes: prueba.lotes, filas: new Map(), congelado: sistemaAlCorte(fechaCorte) }).map((c) => {
     const [dif = 0, nota = null] = diferencias[c.idProducto] ?? [];
     return [c.idProducto, { cantidadContada: c.existenciaSistema + dif, nota }];
   }));
@@ -121,7 +130,7 @@ function detalle(c) {
     idInventarioFisico: c.idInventarioFisico, fechaCorte: c.fechaCorte, estado: c.estado, observaciones: c.observaciones ?? null,
     cerradoEn: c.estado === 'CERRADO' ? c.cerradoEn : null,
     emisor: { nombre: NEGOCIO_PRUEBA.nombre, nit: NEGOCIO_PRUEBA.nit, nrc: NEGOCIO_PRUEBA.nrc },
-    conteo: armarConteo({ ...catalogos, lotes, filas: c.filas, congelado: c.congelado ?? null }),
+    conteo: armarConteo({ ...catalogos, lotes, filas: c.filas, congelado: c.congelado ?? sistemaAlCorte(c.fechaCorte) }),
     ...(c.estado === 'CERRADO' && { acta: c.acta, ajustes: c.ajustes }),
   };
 }
@@ -162,7 +171,12 @@ async function cerrarPrueba(id, observaciones) {
   if (c.estado === 'CERRADO') throw error(409, 'El inventario ya está cerrado.');
   const faltan = prueba.catalogos.productos.filter((p) => p.activo && c.filas.get(p.idProducto)?.cantidadContada == null);
   if (faltan.length) throw error(400, 'Faltan productos por contar.', { conteo: faltan.map((p) => ({ idProducto: p.idProducto, nombreProducto: p.nombreProducto })) });
-  cerrar(c, observaciones?.trim() || null);
+  try {
+    cerrar(c, observaciones?.trim() || null);
+  } catch (e) {
+    if (e instanceof RangeError) throw error(409, e.message); // ya se vendió lo que faltaba: no se cambia nada
+    throw e;
+  }
   c.cerradoEn = new Date().toISOString();
   guardarSesion();
   return structuredClone(detalle(c));

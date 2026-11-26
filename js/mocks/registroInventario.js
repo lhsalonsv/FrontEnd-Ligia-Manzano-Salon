@@ -7,10 +7,10 @@
 import { salidaPeps } from '../utils/peps.js';
 import { centavos } from '../utils/calculos.js';
 
-// Los mismos textos que arma v_registro_inventario (modelo/migracion_1.4.sql)
+// Los mismos textos que arma v_registro_inventario (modelo/migracion_1.5.sql)
 const DESCRIPCION = {
   ENTRADA_COMPRA: 'Compra a proveedor', ENTRADA_AJUSTE: 'Ajuste', SALIDA_VENTA: 'Venta a cliente',
-  SALIDA_AJUSTE: 'Ajuste', USO_SALON: 'Uso en el salón',
+  SALIDA_AJUSTE: 'Ajuste', USO_SALON: 'Uso en el salón', DEVOLUCION_PROVEEDOR: 'Devolución a proveedor',
 };
 
 const siguienteMes = (periodo) => {
@@ -18,8 +18,17 @@ const siguienteMes = (periodo) => {
   return m === 12 ? `${a + 1}-01` : `${a}-${String(m + 1).padStart(2, '0')}`;
 };
 
-/** Todas las filas del kardex de un producto, de la primera entrada a la última salida. */
-function kardexDe(producto, compras) {
+/** La devolución al proveedor trae como documento la NC del proveedor (mov.referencia = su numeroCompra). */
+function documentoDeNota(mov, compras) {
+  const nc = mov.tipo === 'DEVOLUCION_PROVEEDOR' && compras.find((c) => c.numeroCompra === mov.referencia);
+  return nc ? { tipoDocumento: nc.tipoDocumentoProveedor, numeroDocumento: nc.numeroDocumentoProveedor, proveedor: nc.proveedor.razonSocial, nacionalidadProveedor: nc.proveedor.nacionalidad } : {};
+}
+
+/**
+ * Todas las filas del kardex de un producto, de la primera entrada a la última salida.
+ * Un movimiento con `idLote` (la devolución al proveedor) sale de ese lote; los demás, por PEPS.
+ */
+export function kardexDe(producto, compras) {
   const eventos = [
     ...producto.lotes.map((lote) => ({ orden: 0, fechaHora: lote.fechaIngreso, lote })),
     ...producto.movimientos.filter((m) => m.cantidad < 0).map((mov) => ({ orden: 1, fechaHora: mov.fechaHora, mov })), // las entradas salen de los lotes
@@ -62,11 +71,14 @@ function kardexDe(producto, compras) {
         proveedor: compra.proveedor.razonSocial, nacionalidadProveedor: compra.proveedor.nacionalidad,
       });
     } else {
-      for (const parte of salidaPeps([...enExistencia.values()], -mov.cantidad).partes) {
+      const partes = mov.idLote
+        ? [{ idLote: mov.idLote, cantidad: -mov.cantidad, costoUnitario: enExistencia.get(mov.idLote).costoUnitario }]
+        : salidaPeps([...enExistencia.values()], -mov.cantidad).partes;
+      for (const parte of partes) {
         const trabajo = enExistencia.get(parte.idLote);
         trabajo.cantidadDisponible -= parte.cantidad;
         fila(fechaHora, mov.tipo, trabajo, parte.costoUnitario, 0, parte.cantidad,
-          mov.tipo === 'SALIDA_VENTA' && mov.referencia ? { tipoDocumento: 'FACTURA', numeroDocumento: mov.referencia } : {},
+          mov.tipo === 'SALIDA_VENTA' && mov.referencia ? { tipoDocumento: 'FACTURA', numeroDocumento: mov.referencia } : documentoDeNota(mov, compras),
           mov.tipo === 'SALIDA_VENTA' ? null : mov.motivo);
       }
     }
