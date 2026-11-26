@@ -127,7 +127,7 @@ test('la semilla: ventas con IVA incluido, planilla, una anulada y un borrador, 
   sembrarPartidas(p);
   const venta = p.partidas[0];
   assert.deepEqual(venta.lineas.map((l) => [l.codigoCuenta, l.debe, l.haber]), [['110101', 113, 0], ['61010107', 0, 100], ['210702', 0, 13]]);
-  assert.deepEqual(p.partidas.filter((x) => x.estado === 'APLICADA').map((x) => `${x.codigoTipo} ${x.numero}`), ['ING 110001', 'ING 110002', 'PDA 110001', 'PDA 110002', 'PDA 110003']);
+  assert.deepEqual(p.partidas.filter((x) => x.estado === 'APLICADA' && x.mes === 11).map((x) => `${x.codigoTipo} ${x.numero}`), ['ING 110001', 'ING 110002', 'PDA 110001', 'PDA 110002', 'PDA 110003']);
   assert.equal(p.partidas.filter((x) => x.estado === 'BORRADOR').length, 1);
   for (const x of p.partidas.filter((y) => y.estado === 'APLICADA')) assert.equal(totalesLineas(x.lineas).diferencia, 0);
   const original = vistaPartida(p, p.partidas.find((x) => x.numero === '110001' && x.codigoTipo === 'PDA'), false);
@@ -232,11 +232,185 @@ test('un mes con partidas en borrador no se cierra; al aplicar o borrar sí', ()
 test('filtrar el listado: año, mes, tipo, estado y búsqueda por número o concepto', () => {
   const p = estadoPartidas();
   sembrarPartidas(p);
-  assert.equal(filtrarPartidas(p.partidas, {}).length, 6);
+  assert.equal(filtrarPartidas(p.partidas, {}).length, 17); // 6 de noviembre + apertura + 10 de junio a octubre
   assert.equal(filtrarPartidas(p.partidas, { anio: 2026, mes: 12 }).length, 0);
-  assert.equal(filtrarPartidas(p.partidas, { tipo: 'ING' }).length, 3);
+  assert.equal(filtrarPartidas(p.partidas, { tipo: 'ING' }).length, 8);
   assert.equal(filtrarPartidas(p.partidas, { estado: 'BORRADOR' }).length, 1);
-  assert.equal(filtrarPartidas(p.partidas, { buscar: 'PLANILLA' })[0].numero, '110003');
-  assert.deepEqual(filtrarPartidas(p.partidas, { buscar: '110002' }).map((x) => x.codigoTipo).sort(), ['ING', 'PDA']);
+  assert.equal(filtrarPartidas(p.partidas, { buscar: 'PLANILLA', mes: 11 })[0].numero, '110003');
+  assert.deepEqual(filtrarPartidas(p.partidas, { buscar: '110002', mes: 11 }).map((x) => x.codigoTipo).sort(), ['ING', 'PDA']);
   assert.equal(filtrarPartidas(p.partidas, {})[0].fecha, '2026-11-24'); // la más reciente primero
 });
+
+// --- Reportes (migracion_1.7.sql / prueba_1.7.sql) -----------------------------------------
+
+import { saldosCuentas, mayorCuenta, libroDiario } from '../js/mocks/contabilidad.js';
+import { resultadoMes, ultimosMeses, modeloBalanceGeneral, modeloResultados, modeloComprobacion, modeloMayor, modeloDiario, filasExcel } from '../js/utils/reportesContables.js';
+
+/** El escenario de prueba_1.7.sql: apertura, venta, alquiler, venta del año siguiente y un borrador que no cuenta. */
+function escenarioReportes() {
+  const p = estadoPartidas();
+  crearEjercicio(p.ejercicios, 2099);
+  crearEjercicio(p.ejercicios, 2100);
+  const hacer = (fecha, tipo, concepto, lineas, aplicar = true) => {
+    const x = crearBorrador(p, { fecha, codigoTipo: tipo, concepto, lineas }, 'Ana');
+    if (aplicar) aplicarPartida(p, x.idPartida, 'Ana');
+  };
+  const venta = [{ codigoCuenta: '110101', debe: 113 }, { codigoCuenta: '61010107', haber: 100 }, { codigoCuenta: '210702', haber: 13 }];
+  hacer('2099-01-02', 'PDA', 'Apertura', [{ codigoCuenta: '110101', debe: 1000 }, { codigoCuenta: '31010101', haber: 1000 }]);
+  hacer('2099-01-15', 'ING', 'Venta', venta);
+  hacer('2099-02-10', 'PDA', 'Alquiler', [{ codigoCuenta: '5101040101', debe: 50 }, { codigoCuenta: '110101', haber: 50 }]);
+  hacer('2100-01-05', 'ING', 'Venta', venta);
+  hacer('2099-02-20', 'PDA', 'Borrador', [{ codigoCuenta: '110101', debe: 9999 }, { codigoCuenta: '61010107', haber: 9999 }], false);
+  return p;
+}
+const f2 = (n) => (typeof n === 'number' ? n.toFixed(2) : n);
+const unir = (filas, campos) => filas.map((r) => campos.filter((c) => r[c] != null).map((c) => (c === 'fila' ? r[c] : f2(r[c]))).join(' ')).join(' | ');
+const saldos = (p, anio, mes, nivel) => saldosCuentas(p.partidas, p.cuentas, anio, mes, nivel);
+
+test('saldos: balance de comprobación de febrero de 2099 (los mismos números de prueba_1.7.sql)', () => {
+  const p = escenarioReportes();
+  const filas = saldos(p, 2099, 2).filter((r) => ['1', '1101', '110101', '210702', '31010101', '5101040101', '61010107'].includes(r.codigo));
+  assert.equal(unir(filas, ['codigo', 'saldoInicial', 'debe', 'haber', 'saldoFinal']),
+    '1 1113.00 0.00 50.00 1063.00 | 1101 1113.00 0.00 50.00 1063.00 | 110101 1113.00 0.00 50.00 1063.00 | '
+    + '210702 13.00 0.00 0.00 13.00 | 31010101 1000.00 0.00 0.00 1000.00 | 5101040101 0.00 50.00 0.00 50.00 | 61010107 100.00 0.00 0.00 100.00');
+});
+
+test('saldos: el balance general cuadra y el debe y el haber de nivel 0 también', () => {
+  const p = escenarioReportes();
+  const s = (filas, ...codigos) => filas.filter((r) => codigos.includes(r.codigo)).reduce((a, r) => a + r.saldoFinal, 0);
+  const n0 = saldos(p, 2099, 2, 0);
+  assert.deepEqual([s(n0, '1'), s(n0, '2', '3') + s(n0, '6') - s(n0, '4', '5')].map(f2), ['1063.00', '1063.00']);
+  const enero = saldos(p, 2099, 1, 0);
+  assert.deepEqual([enero.reduce((a, r) => a + r.debe, 0), enero.reduce((a, r) => a + r.haber, 0)].map(f2), ['1113.00', '1113.00']);
+  assert.ok(saldos(p, 2099, 2, 1).every((r) => r.nivel <= 1));
+});
+
+test('saldos: en enero de 2100 las cuentas de resultado vuelven a cero y las de balance arrastran su saldo', () => {
+  const p = escenarioReportes();
+  const filas = saldos(p, 2100, 1).filter((r) => ['110101', '210702', '5101040101', '61010107'].includes(r.codigo));
+  assert.equal(unir(filas, ['codigo', 'saldoInicial', 'saldoFinal']), '110101 1063.00 1176.00 | 210702 13.00 26.00 | 5101040101 0.00 0.00 | 61010107 0.00 100.00');
+});
+
+test('mayor: saldo anterior, movimientos de la cuenta mayor con saldo corrido y error si no existe', () => {
+  const p = escenarioReportes();
+  const mayor = (...a) => mayorCuenta(p.partidas, p.cuentas, ...a);
+  assert.equal(unir(mayor('1101', '2099-01-10', '2099-12-31'), ['fila', 'fecha', 'codigoTipo', 'debe', 'haber', 'saldo']),
+    '0 1000.00 | 1 2099-01-15 ING 113.00 0.00 1113.00 | 2 2099-02-10 PDA 0.00 50.00 1063.00');
+  assert.equal(unir(mayor('61010107', '2100-01-01', '2100-01-31'), ['fila', 'saldo']), '0 0.00 | 1 100.00');
+  assert.throws(() => mayor('999', '2099-01-01', '2099-01-31'), /La cuenta 999 no existe/);
+  assert.throws(() => mayor('1101', '2099-02-01', '2099-01-31'), /La fecha final es anterior/);
+});
+
+test('libro diario: partidas aplicadas del rango con totales; el filtro por tipo y el borrador fuera', () => {
+  const p = escenarioReportes();
+  const d = libroDiario(p.partidas, p.cuentas, p.tipos, '2099-01-01', '2099-12-31');
+  assert.deepEqual(d.partidas.map((x) => `${x.codigoTipo} ${x.numero}`), ['PDA 010001', 'ING 010001', 'PDA 020001']);
+  assert.equal(d.totalDebe, 1163);
+  assert.equal(d.totalDebe, d.totalHaber);
+  assert.equal(libroDiario(p.partidas, p.cuentas, p.tipos, '2099-01-01', '2099-12-31', 'ING').partidas.length, 1);
+});
+
+test('los modelos: balance general (con la utilidad del ejercicio), resultados, comprobación, mayor y diario', () => {
+  const p = escenarioReportes();
+  const bg = modeloBalanceGeneral(saldos(p, 2099, 2, 3));
+  assert.deepEqual(bg.cuadre, { activo: 1063, pasivoCapital: 1063, diferencia: 0 });
+  assert.equal(bg.utilidad, 50); // 100 de ingresos − 50 de alquiler
+  assert.ok(bg.filas.some((f) => f.v[1] === 'Utilidad (pérdida) del ejercicio' && f.v[2] === 50));
+  const er = modeloResultados(saldos(p, 2099, 2, 3));
+  assert.equal(er.filas.at(-1).v[2], 50);
+  const cp = modeloComprobacion(saldos(p, 2099, 2), { ocultar: true });
+  assert.equal(cp.cuadre.diferencia, 0);
+  assert.ok(cp.filas.length < 40 && cp.filas.every((f) => f.v[2] || f.v[3] || f.v[4] || f.v[5]));
+  const d = { filas: mayorCuenta(p.partidas, p.cuentas, '1101', '2099-01-01', '2099-12-31') };
+  assert.equal(modeloMayor(d, 'partida').filas.length, 4);
+  assert.equal(modeloMayor(d, 'dia').totales[6], 1063);
+  const dia = libroDiario(p.partidas, p.cuentas, p.tipos, '2099-01-01', '2099-12-31');
+  assert.equal(filasExcel(modeloDiario(dia)).length, 1 + 7 + 1); // cabecera, 2 + 3 + 2 líneas y totales
+});
+
+test('resumen: resultado de un mes y del año; los 6 meses cruzan el año', () => {
+  const p = escenarioReportes();
+  const r = resultadoMes(saldos(p, 2099, 2, 0));
+  assert.deepEqual([r.ingresos, r.costos, r.utilidad, r.ingresosAcum, r.costosAcum, r.utilidadAcum], [0, 50, -50, 100, 50, 50]);
+  assert.deepEqual(ultimosMeses(2026, 2).map((m) => `${m.anio}-${m.mes}`), ['2025-9', '2025-10', '2025-11', '2025-12', '2026-1', '2026-2']);
+});
+
+test('la semilla: la apertura cuadra y el balance general de octubre de 2026 también', () => {
+  const p = estadoPartidas();
+  sembrarPartidas(p);
+  const apertura = p.partidas.find((x) => x.origen === 'APERTURA');
+  assert.equal(apertura.fecha, '2026-01-02');
+  for (const x of p.partidas.filter((y) => y.estado === 'APLICADA')) assert.equal(totalesLineas(x.lineas).diferencia, 0, `${x.codigoTipo} ${x.numero}`);
+  assert.equal(modeloBalanceGeneral(saldosCuentas(p.partidas, p.cuentas, 2026, 10, 6)).cuadre.diferencia, 0);
+  const meses = ultimosMeses(2026, 11).map((m) => resultadoMes(saldosCuentas(p.partidas, p.cuentas, m.anio, m.mes, 0)));
+  assert.ok(meses.slice(0, 5).every((m) => m.ingresos > 0 && m.costos > 0));
+});
+
+// --- Cierre del ejercicio (migracion_1.8.sql / prueba_1.8.sql) -----------------------------
+
+import { generarPartidaCierre, cerrarEjercicio } from '../js/mocks/contabilidad.js';
+
+test('cierre del ejercicio: las mismas líneas, saldos y errores de prueba_1.8.sql (utilidad de 50 en 2099, pérdida de 80 en 2100)', () => {
+  const p = { ...estadoPartidas(), config: { ...CONFIG_PRUEBA } };
+  crearEjercicio(p.ejercicios, 2099);
+  crearEjercicio(p.ejercicios, 2100);
+  const hacer = (fecha, tipo, concepto, lineas) => aplicarPartida(p, crearBorrador(p, { fecha, codigoTipo: tipo, concepto, lineas }, 'Ana').idPartida, 'Ana');
+  const lineasDe = (x) => unir(x.lineas, ['codigoCuenta', 'debe', 'haber']);
+  const s = (anio, ...codigos) => unir(saldos(p, anio, 12).filter((r) => codigos.includes(r.codigo)), ['codigo', 'saldoFinal']);
+  hacer('2099-01-02', 'PDA', 'Apertura', [{ codigoCuenta: '110101', debe: 1000 }, { codigoCuenta: '31010101', haber: 1000 }]);
+  hacer('2099-03-15', 'ING', 'Venta', [{ codigoCuenta: '110101', debe: 113 }, { codigoCuenta: '61010107', haber: 100 }, { codigoCuenta: '210702', haber: 13 }]);
+  hacer('2099-06-10', 'PDA', 'Alquiler', [{ codigoCuenta: '5101040101', debe: 50 }, { codigoCuenta: '110101', haber: 50 }]);
+
+  assert.throws(() => generarPartidaCierre(p, 2099, 'Ana'), /Configure en Contabilidad > Parámetros las cuentas de Pérdidas y Ganancias/);
+  Object.assign(p.config, { ctaPerdidasGanancias: '710101', ctaUtilidadEjercicio: '330101', ctaPerdidaEjercicio: '330201', ctaUtilidadesAnteriores: '330102', ctaPerdidasAnteriores: '330202' });
+  const pendiente = crearBorrador(p, { fecha: '2099-07-01', codigoTipo: 'PDA', concepto: 'Pendiente', lineas: [] }, 'Ana');
+  assert.throws(() => generarPartidaCierre(p, 2099, 'Ana'), /El ejercicio 2099 tiene partidas en borrador/);
+  eliminarBorrador(p, pendiente.idPartida);
+
+  const cierre = generarPartidaCierre(p, 2099, 'Ana');
+  assert.deepEqual([cierre.fecha, cierre.estado, cierre.codigoTipo, cierre.origen], ['2099-12-31', 'BORRADOR', 'PDA', 'CIERRE']);
+  assert.equal(lineasDe(cierre), '5101040101 0.00 50.00 | 61010107 100.00 0.00 | 710101 0.00 50.00 | 710101 50.00 0.00 | 330101 0.00 50.00');
+  assert.throws(() => cerrarEjercicio(p, 2099, 'Ana'), /Cierre primero los 12 meses del ejercicio 2099/);
+  aplicarPartida(p, cierre.idPartida, 'Ana');
+  assert.equal(s(2099, '1', '2', '3', '5', '6', '7', '330101'), '1 1063.00 | 2 13.00 | 3 1050.00 | 330101 50.00 | 5 0.00 | 6 0.00 | 7 0.00');
+  assert.throws(() => generarPartidaCierre(p, 2099, 'Ana'), /El ejercicio 2099 ya tiene su partida de cierre/);
+
+  for (let m = mesPorCerrar(p.ejercicios); m && m.anio <= 2099; m = mesPorCerrar(p.ejercicios)) cerrarPeriodo(p.ejercicios, m.anio, m.mes);
+  const traslado = cerrarEjercicio(p, 2099, 'Ana');
+  assert.equal(p.ejercicios.find((e) => e.anio === 2099).estado, 'CERRADO');
+  assert.equal(`${traslado.fecha} ${traslado.estado} ${lineasDe(traslado)}`, '2100-01-01 BORRADOR 330101 50.00 0.00 | 330102 0.00 50.00');
+  assert.throws(() => cerrarEjercicio(p, 2099, 'Ana'), /no existe o ya está cerrado/);
+  assert.throws(() => reabrirPeriodo(p.ejercicios, 2099, 12), /Solo se puede reabrir el último mes cerrado|está cerrado/);
+  aplicarPartida(p, traslado.idPartida, 'Ana');
+
+  hacer('2100-02-10', 'PDA', 'Alquiler', [{ codigoCuenta: '5101040101', debe: 80 }, { codigoCuenta: '110101', haber: 80 }]);
+  const perdida = generarPartidaCierre(p, 2100, 'Ana');
+  assert.equal(lineasDe(perdida), '5101040101 0.00 80.00 | 710101 80.00 0.00 | 710101 0.00 80.00 | 330201 80.00 0.00');
+  aplicarPartida(p, perdida.idPartida, 'Ana');
+  assert.equal(s(2100, '1', '330102', '330201'), '1 983.00 | 330102 50.00 | 330201 -80.00'); // 330201 es acreedora en su catálogo
+});
+
+test('cierre del ejercicio: sin enero siguiente abierto o sin cuenta de anteriores no hay traslado, y un ejercicio cerrado no reabre meses', () => {
+  const p = { ...estadoPartidas(), config: { ...CONFIG_PRUEBA, ctaPerdidasGanancias: '710101', ctaUtilidadEjercicio: '330101', ctaPerdidaEjercicio: '330201' } };
+  crearEjercicio(p.ejercicios, 2099);
+  aplicarPartida(p, crearBorrador(p, { fecha: '2099-06-10', codigoTipo: 'PDA', concepto: 'Venta', lineas: [{ codigoCuenta: '110101', debe: 5 }, { codigoCuenta: '61010107', haber: 5 }] }, 'Ana').idPartida, 'Ana');
+  aplicarPartida(p, generarPartidaCierre(p, 2099, 'Ana').idPartida, 'Ana');
+  for (let m = mesPorCerrar(p.ejercicios); m; m = mesPorCerrar(p.ejercicios)) cerrarPeriodo(p.ejercicios, m.anio, m.mes);
+  assert.equal(cerrarEjercicio(p, 2099, 'Ana'), null); // no existe 2100
+  assert.throws(() => reabrirPeriodo(p.ejercicios, 2099, 12), /El ejercicio 2099 está cerrado/);
+});
+
+test('estado de resultados: el impuesto sobre la renta (53) sale de los gastos y la utilidad neta cuadra con el balance general', () => {
+  const p = escenarioReportes();
+  hacerImpuesto(p);
+  const filas = saldos(p, 2099, 2, 3);
+  const er = modeloResultados(filas);
+  assert.deepEqual([er.utilidadAntes, er.impuesto, er.utilidad], [50, 10, 40]);
+  assert.deepEqual(er.filas.slice(-3).map((f) => f.v[1] + ' ' + f.v[2]), ['Utilidad (pérdida) antes de impuesto 50', 'Impuesto sobre la renta 10', 'Utilidad (pérdida) neta del ejercicio 40']);
+  assert.ok(er.filas.some((f) => f.v[1] === 'Total gastos' && f.v[2] === 50) && !er.filas.some((f) => f.v[0] === '530101'));
+  assert.equal(modeloBalanceGeneral(filas).utilidad, er.utilidad);
+});
+
+function hacerImpuesto(p) {
+  aplicarPartida(p, crearBorrador(p, { fecha: '2099-02-25', codigoTipo: 'PDA', concepto: 'Impuesto', lineas: [{ codigoCuenta: '530101', debe: 10 }, { codigoCuenta: '110101', haber: 10 }] }, 'Ana').idPartida, 'Ana');
+}

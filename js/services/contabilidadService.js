@@ -1,13 +1,15 @@
 /**
  * contabilidadService.js — Ligia Manzano Salón
- * Contabilidad: parámetros (plan de cuentas, ejercicios y períodos, tipos de partida y configuración) y partidas contables.
- * Contrato en docs/contrato-api.md → "Contabilidad: parámetros" y "Contabilidad: partidas".
+ * Contabilidad: parámetros (plan de cuentas, ejercicios y períodos, tipos de partida y configuración) partidas contables y reportes.
+ * Contrato en docs/contrato-api.md → "Contabilidad: parámetros" y "Contabilidad: partidas" y "Contabilidad: reportes".
  *
  *   GET/POST /api/contabilidad/cuentas · PUT /api/contabilidad/cuentas/{codigo}
  *   GET/POST /api/contabilidad/ejercicios · POST /api/contabilidad/periodos/{anio}/{mes}/cerrar | reabrir
+ *   POST /api/contabilidad/ejercicios/{anio}/partida-cierre | cerrar
  *   GET/POST /api/contabilidad/tipos-partida · PUT /api/contabilidad/tipos-partida/{codigo}
  *   GET/PUT  /api/contabilidad/configuracion
  *   GET/POST /api/contabilidad/partidas · GET/PUT/DELETE /api/contabilidad/partidas/{id} · POST /partidas/{id}/aplicar | anular
+ *   GET /api/contabilidad/reportes/saldos | mayor | diario
  */
 import { DATOS_PRUEBA } from '../config.js';
 import { authFetch, ApiError } from '../utils/authFetch.js';
@@ -19,6 +21,7 @@ import {
   crearEjercicio as crearEjercicioPrueba, cerrarPeriodo as cerrarPeriodoPrueba, reabrirPeriodo as reabrirPeriodoPrueba,
   guardarTipoPartida, validarConfiguracion, sembrarPartidas, validarPartida, crearBorrador, editarBorrador, eliminarBorrador,
   aplicarPartida as aplicarPartidaPrueba, anularPartida as anularPartidaPrueba, borradoresPorMes, filtrarPartidas, vistaPartida,
+  saldosCuentas, mayorCuenta, libroDiario, generarPartidaCierre as generarPartidaCierrePrueba, cerrarEjercicio as cerrarEjercicioPrueba,
 } from '../mocks/contabilidad.js';
 
 /** Para las pantallas: qué mes se puede cerrar y cuál reabrir (se calcula sobre lo que devuelve GET /ejercicios). */
@@ -38,6 +41,10 @@ export const listarEjercicios = () => (D() ? prueba((p) => p.ejercicios) : authF
 export const crearEjercicio = (anio) => (D() ? prueba((p) => reglaPrueba(() => crearEjercicioPrueba(p.ejercicios, anio))) : authFetch(`${BASE}/ejercicios`, { method: 'POST', cuerpo: { anio } }));
 export const cerrarPeriodo = (anio, mes) => (D() ? prueba((p) => reglaPrueba(() => cerrarPeriodoPrueba(p.ejercicios, anio, mes, borradoresPorMes(p.partidas)))) : authFetch(`${BASE}/periodos/${anio}/${mes}/cerrar`, { method: 'POST' }));
 export const reabrirPeriodo = (anio, mes) => (D() ? prueba((p) => reglaPrueba(() => reabrirPeriodoPrueba(p.ejercicios, anio, mes))) : authFetch(`${BASE}/periodos/${anio}/${mes}/reabrir`, { method: 'POST' }));
+/** fn_generar_partida_cierre: crea el borrador del 31 de diciembre y lo devuelve (con líneas). 409 con el mensaje de la función si no se puede. */
+export const generarPartidaCierre = (anio) => (D() ? prueba((p) => reglaPrueba(() => vistaPartida(p, generarPartidaCierrePrueba(p, anio, usuarioPrueba()), true))) : authFetch(`${BASE}/ejercicios/${anio}/partida-cierre`, { method: 'POST' }));
+/** fn_cerrar_ejercicio: marca el año CERRADO. @returns {Promise<{idPartidaTraslado:number|null}>} borrador del traslado a ejercicios anteriores (null si no se pudo crear) */
+export const cerrarEjercicio = (anio) => (D() ? prueba((p) => reglaPrueba(() => ({ idPartidaTraslado: cerrarEjercicioPrueba(p, anio, usuarioPrueba())?.idPartida ?? null }))) : authFetch(`${BASE}/ejercicios/${anio}/cerrar`, { method: 'POST' }));
 
 export const listarTiposPartida = () => (D() ? prueba((p) => p.tipos) : authFetch(`${BASE}/tipos-partida`));
 /** @param {{codigo:string, nombre:string, predeterminado:boolean, activo:boolean}} datos @param {boolean} nuevo */
@@ -70,6 +77,24 @@ export const aplicarPartida = (id) => (D() ? prueba((p) => { encontrar(p, id); r
 /** Crea la partida inversa ya aplicada y la devuelve. @param {{motivo:string, fecha:string}} datos */
 export const anularPartida = (id, datos) => (D() ? prueba((p) => { encontrar(p, id); return reglaPrueba(() => vistaPartida(p, anularPartidaPrueba(p, Number(id), usuarioPrueba(), datos.motivo, datos.fecha), true)); }) : authFetch(`${BASE}/partidas/${id}/anular`, { method: 'POST', cuerpo: datos }));
 
+/**
+ * Reportes (solo lectura sobre partidas aplicadas). Todos devuelven el emisor para el encabezado de la hoja.
+ * Saldos: ?anio&mes&nivel(0-6) → { emisor, filas } de fn_saldos_cuentas. Con ellos el frontend arma el Resumen, el Balance de comprobación,
+ * el Balance General y el Estado de Resultados.
+ * @param {{anio:number, mes:number, nivel?:number}} f
+ */
+export const obtenerSaldos = ({ anio, mes, nivel = 6 }) => (D()
+  ? prueba((p) => ({ emisor: emisorPrueba(), filas: saldosCuentas(p.partidas, p.cuentas, Number(anio), Number(mes), Number(nivel)) }))
+  : authFetch(`${BASE}/reportes/saldos?${new URLSearchParams({ anio, mes, nivel })}`));
+/** Mayor: ?cuenta&desde&hasta → { emisor, cuenta: { codigo, nombre, naturaleza }, filas } de fn_mayor_cuenta (fila 0 = saldo anterior). */
+export const obtenerMayor = ({ cuenta, desde, hasta }) => (D()
+  ? prueba((p) => reglaPrueba(() => ({ emisor: emisorPrueba(), cuenta: p.cuentas.find((c) => c.codigo === cuenta) ?? null, filas: mayorCuenta(p.partidas, p.cuentas, cuenta, desde, hasta) })))
+  : authFetch(`${BASE}/reportes/mayor?${new URLSearchParams({ cuenta, desde, hasta })}`));
+/** Diario: ?desde&hasta&tipo → { emisor, partidas: [{ ..., lineas }], totalDebe, totalHaber }. */
+export const obtenerDiario = ({ desde, hasta, tipo = '' }) => (D()
+  ? prueba((p) => reglaPrueba(() => ({ emisor: emisorPrueba(), ...libroDiario(p.partidas, p.cuentas, p.tipos, desde, hasta, tipo) })))
+  : authFetch(`${BASE}/reportes/diario?${new URLSearchParams({ desde, hasta, tipo })}`));
+
 // --- Datos de prueba (guardados en sessionStorage para que las recargas conserven los cambios) -----------------
 
 const esperar = () => new Promise((r) => setTimeout(r, 150));
@@ -96,6 +121,7 @@ async function prueba(fn) {
   return structuredClone(resultado);
 }
 
+const emisorPrueba = () => ({ nombre: NEGOCIO_PRUEBA.nombre, nit: NEGOCIO_PRUEBA.nit, nrc: NEGOCIO_PRUEBA.nrc });
 const usuarioPrueba = () => obtenerSesion()?.usuario.nombreCompleto ?? 'Sistema';
 const encontrar = (p, id) => {
   const x = p.partidas.find((y) => y.idPartida === Number(id));

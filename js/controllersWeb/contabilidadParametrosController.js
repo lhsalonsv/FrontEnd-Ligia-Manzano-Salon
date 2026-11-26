@@ -5,12 +5,15 @@
  */
 import { montarLayout } from '../utils/layout.js';
 import { icono } from '../utils/icons.js';
-import { escapar, fechaCorta, MESES } from '../utils/formato.js';
+import { escapar, fechaCorta, dinero, MESES } from '../utils/formato.js';
+import { centavos } from '../utils/calculos.js';
+import { resultadoMes } from '../utils/reportesContables.js';
 import { campo, entrada, mostrarErrores, aviso } from '../utils/formulario.js';
 import { crearXlsx, descargar } from '../utils/xlsx.js';
 import {
   listarCuentas, crearCuenta, actualizarCuenta, listarEjercicios, crearEjercicio, cerrarPeriodo, reabrirPeriodo,
   listarTiposPartida, guardarTipo, obtenerConfiguracion, guardarConfiguracion, mesPorCerrar, mesPorReabrir, TIPOS_CUENTA,
+  listarPartidas, obtenerSaldos, generarPartidaCierre, cerrarEjercicio,
 } from '../services/contabilidadService.js';
 
 const sesion = montarLayout();
@@ -22,7 +25,7 @@ const puedeEditar = Boolean(sesion && ['ADMINISTRADOR', 'CONTADOR'].includes(ses
 
 const estado = {
   pestana: 'cuentas', cuentas: [], filas: [], conHijas: new Set(), contraidas: new Set(), tipo: 'TODOS', buscar: '',
-  ejercicios: [], confirmar: null, avisoPeriodos: null, tipos: [], config: null,
+  ejercicios: [], confirmar: null, confirmarCierre: null, cierres: {}, avisoPeriodos: null, tipos: [], config: null,
 };
 
 const FILA_TIPO = 'grid grid-cols-[64px_minmax(0,1fr)_120px_80px_72px] items-center gap-x-3 px-4';
@@ -228,6 +231,40 @@ function htmlConfirmacion(c) {
     <button type="button" class="btn btn-secundario h-9 px-3 text-sm" data-periodo="cancelar">Cancelar</button></span></div>`;
 }
 
+const RESERVA_LEGAL = 0.07; // art. 123 del Código de Comercio: solo de referencia, el sistema no la calcula
+
+/** Panel "Cierre del ejercicio" de un ejercicio abierto: los 4 pasos de migracion_1.8.sql como lista con su estado. */
+function htmlCierre(e) {
+  const c = estado.cierres[e.anio];
+  const cerrados = e.periodos.filter((p) => p.estado === 'CERRADO').length;
+  const partida = c?.partida;
+  const aplicada = partida?.estado === 'APLICADA';
+  const listo = aplicada && cerrados === 12;
+  const paso = (n, titulo, hecho, cuerpo) => `<li class="flex min-w-0 flex-col gap-1.5 border-t border-neutro-100 pt-3 first:border-0 first:pt-0">
+      <div class="flex flex-wrap items-center gap-2"><b class="font-semibold">${n}. ${titulo}</b>${hecho === null ? '' : `<span class="insignia ${hecho ? 'insignia-ok' : 'insignia-apagada'}">${hecho ? 'Hecho' : 'Pendiente'}</span>`}</div>
+      <div class="flex min-w-0 flex-col items-start gap-2 break-words text-sm text-texto-secundario">${cuerpo}</div></li>`;
+  const reserva = c && !aplicada ? `<p>Utilidad antes del cierre: <b class="font-semibold tabular-nums">${dinero(c.utilidad)}</b> · 7 % = <b class="font-semibold tabular-nums">${dinero(centavos(Math.max(0, c.utilidad) * RESERVA_LEGAL))}</b> (referencia, no es la reserva calculada).</p>` : '';
+  const pregunta = estado.confirmarCierre?.anio === e.anio ? estado.confirmarCierre.accion : null;
+  const confirmacion = !pregunta ? '' : `<div class="aviso aviso-aviso mt-3 flex-wrap items-center" role="alertdialog" aria-label="Confirmar">${icono('advertencia')}<p class="min-w-0 flex-1">${escapar(pregunta === 'generar'
+    ? `¿Generar la partida de cierre del ejercicio ${e.anio}? Queda en borrador al 31 de diciembre para que la contadora la revise y la aplique.`
+    : `¿Cerrar el ejercicio ${e.anio}? Ya no se podrá reabrir ningún mes. Queda en borrador el traslado del resultado a ejercicios anteriores.`)}</p>
+    <span class="flex gap-2"><button type="button" class="btn btn-primario h-9 px-3 text-sm" data-cierre="confirmar">${pregunta === 'generar' ? 'Generar partida' : 'Cerrar ejercicio'}</button>
+    <button type="button" class="btn btn-secundario h-9 px-3 text-sm" data-cierre="cancelar">Cancelar</button></span></div>`;
+  const cuerpo2 = !c ? '<p>No se pudo leer el estado del cierre.</p>' : partida
+    ? `<p>${aplicada ? `Aplicada (${escapar(partida.codigoTipo)} ${escapar(partida.numero)}).` : 'Creada en borrador: revísela y aplíquela.'} <a href="partidas.html?id=${partida.idPartida}" class="${BOTON_FILA}">Abrir la partida</a></p>`
+    : `<p>Deja en cero las cuentas de resultado y lleva el resultado a utilidad o pérdida del ejercicio. Ya no debe haber partidas en borrador.</p>${puedeEditar ? `<button type="button" class="btn btn-secundario h-9 px-3 text-sm" data-cierre="generar" data-anio="${e.anio}">Generar partida de cierre</button>` : ''}`;
+  return `<section class="mt-5 rounded-medio border border-borde-default p-3 sm:p-4" aria-labelledby="cierre-${e.anio}">
+    <h3 id="cierre-${e.anio}" class="text-lg">Cierre del ejercicio ${e.anio}</h3>
+    <ol class="mt-3 flex flex-col gap-3">
+      ${paso(1, 'Ajustes de la contadora', null, `<p>Registre y aplique en diciembre la depreciación, provisiones, el impuesto sobre la renta y la reserva legal (7 % de la utilidad neta hasta la quinta parte del capital social, arts. 123 y 295 del Código de Comercio). El sistema no los calcula.</p>${reserva}`)}
+      ${paso(2, 'Partida de cierre', aplicada, cuerpo2)}
+      ${paso(3, 'Meses cerrados', cerrados === 12, `<p>${cerrados} de 12. Se cierran en orden, arriba, hasta diciembre.</p>`)}
+      ${paso(4, 'Cerrar el ejercicio', false, `${listo ? '' : '<p>Se habilita cuando la partida de cierre esté aplicada y los 12 meses cerrados.</p>'}${puedeEditar ? `<button type="button" class="btn btn-primario h-9 px-3 text-sm" data-cierre="cerrar" data-anio="${e.anio}" ${listo ? '' : 'disabled'}>Cerrar ejercicio</button>` : ''}`)}
+    </ol>
+    ${confirmacion}
+  </section>`;
+}
+
 function pintarPeriodos() {
   const dif = { cerrar: mesPorCerrar(estado.ejercicios), reabrir: mesPorReabrir(estado.ejercicios) };
   const siguiente = Math.max(new Date().getFullYear(), ...estado.ejercicios.map((e) => e.anio + 1));
@@ -237,9 +274,11 @@ function pintarPeriodos() {
         <small class="text-13 text-texto-secundario">${fechaCorta(e.fechaInicio)} – ${fechaCorta(e.fechaFin)}</small></header>
       ${estado.confirmar?.anio === e.anio ? htmlConfirmacion(estado.confirmar) : ''}
       <ul class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">${e.periodos.map((p) => htmlMes(e, p, dif)).join('')}</ul>
+      ${e.estado === 'ABIERTO' ? htmlCierre(e) : ''}
     </article>`).join('');
   $('pestana-periodos').innerHTML = `<div class="flex flex-col gap-4">
     ${estado.avisoPeriodos ? aviso(estado.avisoPeriodos.error ? 'aviso-error' : 'aviso-exito', estado.avisoPeriodos.error ? 'alerta' : 'info', estado.avisoPeriodos.texto) : ''}
+    ${estado.avisoPeriodos?.enlace ? `<a href="${estado.avisoPeriodos.enlace.href}" class="${BOTON_FILA} self-start">${escapar(estado.avisoPeriodos.enlace.texto)}</a>` : ''}
     <p class="text-13 text-texto-secundario">Se cierra el mes abierto más antiguo y se reabre solo el último mes cerrado. Un mes con partidas en borrador no se cierra.</p>
     ${puedeEditar ? `<form id="form-ejercicio" class="flex flex-wrap items-end gap-3" novalidate>
       <label><span class="campo-etiqueta">Año del ejercicio</span><span class="campo-caja w-32"><input name="anio" type="number" min="2000" max="2100" step="1" value="${siguiente}" class="w-full tabular-nums"></span></label>
@@ -247,9 +286,21 @@ function pintarPeriodos() {
     ${tarjetas}</div>`;
 }
 
+/** Por ejercicio abierto: su partida de cierre vigente (sin anulación) y la utilidad antes del cierre. Si falla, el panel lo avisa. */
+async function cargarCierres() {
+  await Promise.all(estado.ejercicios.filter((e) => e.estado === 'ABIERTO').map(async (e) => {
+    try {
+      const [{ contenido }, { filas }] = await Promise.all([listarPartidas({ anio: e.anio, buscar: 'Cierre del ejercicio' }), obtenerSaldos({ anio: e.anio, mes: 12, nivel: 0 })]);
+      estado.cierres[e.anio] = { partida: contenido.find((x) => x.origen === 'CIERRE' && !x.idPartidaAnuladaPor) ?? null, utilidad: resultadoMes(filas).utilidadAcum };
+    } catch { estado.cierres[e.anio] = null; }
+  }));
+}
+
+const recargarEjercicios = async () => { estado.ejercicios = await listarEjercicios(); await cargarCierres(); };
+
 async function cargarPeriodos() {
   try {
-    estado.ejercicios = await listarEjercicios();
+    await recargarEjercicios();
   } catch (e) {
     estado.avisoPeriodos = { error: true, texto: e.message };
   }
@@ -259,10 +310,11 @@ async function cargarPeriodos() {
 /** Corre la acción del servicio y vuelve a pintar con su mensaje (el de la función de la base si la rechaza). */
 async function accionPeriodos(textoOk, accion) {
   estado.confirmar = null;
+  estado.confirmarCierre = null;
   try {
-    await accion();
-    estado.avisoPeriodos = { texto: textoOk };
-    estado.ejercicios = await listarEjercicios();
+    const r = await accion(); // opcional: { enlace: { href, texto } }; textoOk puede ser una función del resultado
+    estado.avisoPeriodos = { texto: typeof textoOk === 'function' ? textoOk(r) : textoOk, enlace: r?.enlace };
+    await recargarEjercicios();
   } catch (e) {
     estado.avisoPeriodos = { error: true, texto: e.message };
   }
@@ -433,6 +485,21 @@ if (sesion && !ROLES.includes(sesion.usuario.rol)) {
       accionPeriodos(accion === 'cerrar' ? `${nombreMes(m)} de ${a} cerrado.` : `${nombreMes(m)} de ${a} reabierto.`, () => (accion === 'cerrar' ? cerrarPeriodo(a, m) : reabrirPeriodo(a, m)));
       return;
     } else estado.confirmar = { accion: periodo, anio: Number(anio), mes: Number(mes) };
+    estado.avisoPeriodos = null;
+    pintarPeriodos();
+  });
+  $('pestana-periodos').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-cierre]');
+    if (!b) return;
+    const { cierre, anio } = b.dataset;
+    if (cierre === 'confirmar') {
+      const { accion, anio: a } = estado.confirmarCierre;
+      if (accion === 'generar') accionPeriodos(`Partida de cierre del ejercicio ${a} creada en borrador.`, async () => ({ enlace: { href: `partidas.html?id=${(await generarPartidaCierre(a)).idPartida}`, texto: 'Abrir la partida de cierre' } }));
+      else accionPeriodos((r) => `Ejercicio ${a} cerrado.${r.enlace ? ' Queda en borrador el traslado a ejercicios anteriores.' : ' No se creó el traslado a ejercicios anteriores: enero del año siguiente no está abierto o falta la cuenta en Configuración.'}`,
+        async () => { const { idPartidaTraslado } = await cerrarEjercicio(a); return { enlace: idPartidaTraslado ? { href: `partidas.html?id=${idPartidaTraslado}`, texto: 'Abrir el traslado en borrador' } : null }; });
+      return;
+    }
+    estado.confirmarCierre = cierre === 'cancelar' ? null : { accion: cierre, anio: Number(anio) };
     estado.avisoPeriodos = null;
     pintarPeriodos();
   });

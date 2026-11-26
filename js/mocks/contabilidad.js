@@ -320,4 +320,170 @@ export function sembrarPartidas(p) {
   aplicarPartida(p, planilla.idPartida, u, dia('15'));
   crearBorrador(p, { fecha: '2026-11-24', codigoTipo: 'ING', concepto: 'Ventas del día 24/11/2026 (falta registrar el IVA)', lineas: [
     { codigoCuenta: '110101', debe: 56.5 }, { codigoCuenta: '61010107', haber: 50 }] }, u, dia('24'));
+  sembrarHistorico(p);
+}
+
+/**
+ * Enero a octubre de 2026 (meses cerrados): la partida de apertura y, de junio a octubre, una venta (ING) y la planilla (PDA) por mes,
+ * para que el balance y la gráfica de 6 meses tengan datos. Son datos sembrados: no pasan por la regla del mes abierto, pero cuadran.
+ */
+function sembrarHistorico(p) {
+  const u = 'Mario Pérez';
+  const aplicada = (fecha, codigoTipo, concepto, origen, lineas) => {
+    const anio = Number(fecha.slice(0, 4)), mes = Number(fecha.slice(5, 7));
+    p.sigId ??= Math.max(0, ...p.partidas.map((x) => x.idPartida)) + 1;
+    const siguiente = 1 + Math.max(0, ...p.partidas.filter((y) => y.numero && y.codigoTipo === codigoTipo && y.anio === anio && y.mes === mes).map((y) => Number(y.numero.slice(2))));
+    const cuando = `${fecha}T18:00:00-06:00`;
+    p.partidas.push({ idPartida: p.sigId++, anio, mes, numero: String(mes).padStart(2, '0') + String(siguiente).padStart(4, '0'), fecha, codigoTipo, concepto, estado: 'APLICADA', origen,
+      idPartidaAnula: null, creadoPor: u, creadoEn: cuando, aplicadaPor: u, aplicadaEn: cuando, lineas: lineasDe(lineas) });
+  };
+  aplicada('2026-01-02', 'PDA', 'Apertura del ejercicio 2026', 'APERTURA', [
+    { codigoCuenta: '110101', debe: 500 }, { codigoCuenta: '1101030101', debe: 3500 }, { codigoCuenta: '120102', debe: 2400 },
+    { codigoCuenta: '120202', haber: 300 }, { codigoCuenta: '21020101', haber: 600 }, { codigoCuenta: '31010101', haber: 2000 },
+    { codigoCuenta: '31010102', haber: 1000 }, { codigoCuenta: '32010102', haber: 500 }, { codigoCuenta: '330102', haber: 2000 }]);
+  const ventas = [1130, 1243, 1356, 1017, 1469]; // con IVA, de junio a octubre
+  const sueldos = [800, 800, 850, 800, 900];
+  ventas.forEach((total, i) => {
+    const mes = String(i + 6).padStart(2, '0');
+    const iva = centavos(total - centavos(total / 1.13));
+    aplicada(`2026-${mes}-28`, 'ING', `Ventas del mes ${mes}/2026`, 'MANUAL', [
+      { codigoCuenta: '110101', debe: total }, { codigoCuenta: '61010107', concepto: 'Servicios de salón sin IVA', haber: centavos(total - iva) },
+      { codigoCuenta: '210702', concepto: 'IVA 13 % de las ventas', haber: iva }]);
+    aplicada(`2026-${mes}-15`, 'PDA', `Planilla del mes ${mes}/2026`, 'MANUAL', [
+      { codigoCuenta: '51010101', concepto: `Sueldos del mes ${mes}`, debe: sueldos[i] }, { codigoCuenta: '210301', concepto: 'Salarios por pagar', haber: sueldos[i] }]);
+  });
+}
+
+// --- Cierre del ejercicio (migracion_1.8.sql: fn_generar_partida_cierre y fn_cerrar_ejercicio) --------------------
+// `p` = { partidas, ejercicios, cuentas, tipos, config }. Lanzan Error con el mensaje de la base.
+
+const cuentasResultadoConSaldo = (p, anio) => saldosCuentas(p.partidas, p.cuentas, anio, 12)
+  .filter((s) => s.aceptaMovimiento && ['INGRESO', 'COSTO_GASTO'].includes(s.tipo) && s.saldoFinal !== 0);
+/** La partida de cierre vigente de un año (origen CIERRE y sin anulación), la que sea su estado. */
+export const partidaCierre = (partidas, anio) => partidas.find((x) => x.anio === anio && x.origen === 'CIERRE' && !partidas.some((a) => a.idPartidaAnula === x.idPartida));
+
+/**
+ * fn_generar_partida_cierre: en BORRADOR al 31 de diciembre, deja en cero cada cuenta de resultado contra Pérdidas y Ganancias
+ * y lleva el resultado a la cuenta de utilidad (haber) o de pérdida (debe) del ejercicio. Devuelve la partida.
+ */
+export function generarPartidaCierre(p, anio, usuario, ahora = new Date().toISOString()) {
+  const c = p.config;
+  if (!c.ctaPerdidasGanancias || !c.ctaUtilidadEjercicio || !c.ctaPerdidaEjercicio) throw new Error('Configure en Contabilidad > Parámetros las cuentas de Pérdidas y Ganancias, utilidad del ejercicio y pérdida del ejercicio');
+  if (partidaCierre(p.partidas, anio)) throw new Error(`El ejercicio ${anio} ya tiene su partida de cierre (bórrela si está en borrador, o anúlela)`);
+  if (p.partidas.some((x) => x.anio === anio && x.estado === 'BORRADOR')) throw new Error(`El ejercicio ${anio} tiene partidas en borrador: aplíquelas o bórrelas antes del cierre`);
+  const lineas = cuentasResultadoConSaldo(p, anio).map((s) => {
+    const alDebe = (s.naturaleza === 'A') === (s.saldoFinal > 0);
+    return { codigoCuenta: s.codigo, debe: alDebe ? Math.abs(s.saldoFinal) : 0, haber: alDebe ? 0 : Math.abs(s.saldoFinal) };
+  });
+  if (!lineas.length) throw new Error(`El ejercicio ${anio} no tiene saldos en cuentas de resultado`);
+  const neto = totalesLineas(lineas).diferencia; // ingresos − costos y gastos: positivo = utilidad
+  if (neto > 0) {
+    lineas.push({ codigoCuenta: c.ctaPerdidasGanancias, concepto: 'Utilidad del ejercicio', haber: neto }, { codigoCuenta: c.ctaPerdidasGanancias, concepto: 'Traslado de la utilidad', debe: neto },
+      { codigoCuenta: c.ctaUtilidadEjercicio, concepto: `Utilidad del ejercicio ${anio}`, haber: neto });
+  } else if (neto < 0) {
+    lineas.push({ codigoCuenta: c.ctaPerdidasGanancias, concepto: 'Pérdida del ejercicio', debe: -neto }, { codigoCuenta: c.ctaPerdidasGanancias, concepto: 'Traslado de la pérdida', haber: -neto },
+      { codigoCuenta: c.ctaPerdidaEjercicio, concepto: `Pérdida del ejercicio ${anio}`, debe: -neto });
+  }
+  const x = crearBorrador(p, { fecha: `${anio}-12-31`, codigoTipo: 'PDA', concepto: `Cierre del ejercicio ${anio}: liquidación de cuentas de resultado`, lineas }, usuario, ahora);
+  x.origen = 'CIERRE';
+  return x;
+}
+
+/**
+ * fn_cerrar_ejercicio: marca el año CERRADO y, si enero siguiente está abierto y hay cuenta de ejercicios anteriores, deja en BORRADOR el traslado
+ * de la utilidad (o pérdida) del ejercicio. Devuelve la partida del traslado o null si no se pudo crear.
+ */
+export function cerrarEjercicio(p, anio, usuario, ahora = new Date().toISOString()) {
+  const ejercicio = p.ejercicios.find((e) => e.anio === anio);
+  if (ejercicio?.estado !== 'ABIERTO') throw new Error(`El ejercicio ${anio} no existe o ya está cerrado`);
+  if (ejercicio.periodos.some((m) => m.estado === 'ABIERTO')) throw new Error(`Cierre primero los 12 meses del ejercicio ${anio}`);
+  const cierre = partidaCierre(p.partidas, anio);
+  if (cierre?.estado !== 'APLICADA') throw new Error(`Falta aplicar la partida de cierre del ejercicio ${anio}`);
+  if (cuentasResultadoConSaldo(p, anio).length) throw new Error(`Quedan cuentas de resultado con saldo en el ejercicio ${anio}: revise la partida de cierre`);
+  ejercicio.estado = 'CERRADO';
+  const c = p.config;
+  const suma = (cuenta, a, b) => cierre.lineas.filter((l) => l.codigoCuenta === cuenta).reduce((s, l) => centavos(s + l[a] - l[b]), 0);
+  const utilidad = c.ctaUtilidadEjercicio ? suma(c.ctaUtilidadEjercicio, 'haber', 'debe') : 0;
+  const perdida = c.ctaPerdidaEjercicio ? suma(c.ctaPerdidaEjercicio, 'debe', 'haber') : 0;
+  if (!mesAbierto(p.ejercicios, anio + 1, 1) || !((utilidad > 0 && c.ctaUtilidadesAnteriores) || (perdida > 0 && c.ctaPerdidasAnteriores))) return null;
+  const lineas = utilidad > 0
+    ? [{ codigoCuenta: c.ctaUtilidadEjercicio, debe: utilidad }, { codigoCuenta: c.ctaUtilidadesAnteriores, haber: utilidad }]
+    : [{ codigoCuenta: c.ctaPerdidasAnteriores, debe: perdida }, { codigoCuenta: c.ctaPerdidaEjercicio, haber: perdida }];
+  const x = crearBorrador(p, { fecha: `${anio + 1}-01-01`, codigoTipo: 'PDA', concepto: `Traslado del resultado del ejercicio ${anio} a ejercicios anteriores`, lineas }, usuario, ahora);
+  x.origen = 'APERTURA';
+  return x;
+}
+
+// --- Reportes (migracion_1.7.sql: fn_saldos_cuentas, fn_mayor_cuenta y v_libro_diario) -------------------------
+// Solo cuentan las partidas APLICADAS (las anulaciones también: están aplicadas).
+
+const TIPOS_ACUMULAN = ['ACTIVO', 'PASIVO', 'CAPITAL', 'ORDEN_DEUDORA', 'ORDEN_ACREEDORA']; // el resto solo desde el 1 de enero
+const monto = (n) => centavos(n) || 0; // `|| 0`: evita -0
+const firmaNaturaleza = (c, debe, haber) => (c.naturaleza === 'D' ? debe - haber : haber - debe);
+const comparar = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+/** v_libro_diario: una fila por línea de partida aplicada, en el orden del libro (fecha, tipo, número, línea). */
+export function filasLibroDiario(partidas) {
+  return partidas.filter((x) => x.estado === 'APLICADA')
+    .flatMap((x) => x.lineas.map((l) => ({ idPartida: x.idPartida, numero: x.numero, fecha: x.fecha, codigoTipo: x.codigoTipo, concepto: x.concepto, linea: l.linea,
+      codigoCuenta: l.codigoCuenta, conceptoLinea: l.concepto ?? x.concepto, debe: l.debe, haber: l.haber })))
+    .sort((a, b) => comparar(a.fecha, b.fecha) || comparar(a.codigoTipo, b.codigoTipo) || comparar(a.numero, b.numero) || a.linea - b.linea);
+}
+
+/**
+ * fn_saldos_cuentas: saldo inicial, debe y haber del mes y saldo final de cada cuenta de nivel <= `nivel`. Cada cuenta suma las de detalle
+ * cuyo código empieza con el suyo; el saldo va según su naturaleza; ingresos, costos y gastos y la liquidadora acumulan solo desde el 1 de enero.
+ */
+export function saldosCuentas(partidas, cuentas, anio, mes, nivel = 9) {
+  const desdeMes = `${anio}-${String(mes).padStart(2, '0')}-01`;
+  const hasta = mes === 12 ? `${anio + 1}-01-01` : `${anio}-${String(mes + 1).padStart(2, '0')}-01`;
+  const inicioAnio = `${anio}-01-01`;
+  const mov = filasLibroDiario(partidas).filter((m) => m.fecha < hasta);
+  return cuentas.filter((c) => c.nivel <= nivel).sort((a, b) => comparar(a.codigo, b.codigo)).map((c) => {
+    const acumula = TIPOS_ACUMULAN.includes(c.tipo);
+    let dIni = 0, hIni = 0, dMes = 0, hMes = 0;
+    for (const m of mov) {
+      if (!m.codigoCuenta.startsWith(c.codigo)) continue;
+      if (m.fecha >= desdeMes) { dMes = centavos(dMes + m.debe); hMes = centavos(hMes + m.haber); }
+      else if (acumula || m.fecha >= inicioAnio) { dIni = centavos(dIni + m.debe); hIni = centavos(hIni + m.haber); }
+    }
+    return { codigo: c.codigo, nombre: c.nombre, tipo: c.tipo, naturaleza: c.naturaleza, nivel: c.nivel, aceptaMovimiento: c.aceptaMovimiento,
+      saldoInicial: monto(firmaNaturaleza(c, dIni, hIni)), debe: dMes, haber: hMes, saldoFinal: monto(firmaNaturaleza(c, dIni + dMes, hIni + hMes)) };
+  });
+}
+
+/**
+ * fn_mayor_cuenta: movimientos de la cuenta (con todas sus subcuentas) entre dos fechas con el saldo corrido en su naturaleza.
+ * La fila 0 es el saldo anterior (las cuentas de resultado lo cuentan solo desde el 1 de enero del año de `desde`). Lanza Error como la base.
+ */
+export function mayorCuenta(partidas, cuentas, codigo, desde, hasta) {
+  const c = cuentas.find((x) => x.codigo === codigo);
+  if (!c) throw new Error(`La cuenta ${codigo} no existe`);
+  if (hasta < desde) throw new Error('La fecha final es anterior a la inicial');
+  const inicio = TIPOS_ACUMULAN.includes(c.tipo) ? '' : `${desde.slice(0, 4)}-01-01`;
+  const delaCuenta = filasLibroDiario(partidas).filter((m) => m.codigoCuenta.startsWith(codigo));
+  let saldo = monto(delaCuenta.filter((m) => m.fecha < desde && m.fecha >= inicio).reduce((s, m) => s + firmaNaturaleza(c, m.debe, m.haber), 0));
+  const filas = [{ fila: 0, fecha: null, idPartida: null, numero: null, codigoTipo: null, codigoCuenta: null, concepto: 'Saldo anterior', debe: null, haber: null, saldo }];
+  for (const m of delaCuenta.filter((x) => x.fecha >= desde && x.fecha <= hasta)) {
+    saldo = centavos(saldo + firmaNaturaleza(c, m.debe, m.haber));
+    filas.push({ fila: filas.length, fecha: m.fecha, idPartida: m.idPartida, numero: m.numero, codigoTipo: m.codigoTipo, codigoCuenta: m.codigoCuenta,
+      concepto: m.conceptoLinea, debe: m.debe, haber: m.haber, saldo: monto(saldo) });
+  }
+  return filas;
+}
+
+/** Libro diario: las partidas aplicadas entre dos fechas (y de un tipo si se pide) con sus líneas y totales, como las devuelve la API. */
+export function libroDiario(partidas, cuentas, tipos, desde, hasta, tipo = '') {
+  if (hasta < desde) throw new Error('La fecha final es anterior a la inicial');
+  const porId = new Map();
+  for (const m of filasLibroDiario(partidas)) {
+    if (m.fecha < desde || m.fecha > hasta || (tipo && m.codigoTipo !== tipo)) continue;
+    if (!porId.has(m.idPartida)) porId.set(m.idPartida, { idPartida: m.idPartida, numero: m.numero, fecha: m.fecha, codigoTipo: m.codigoTipo,
+      tipo: tipos.find((t) => t.codigo === m.codigoTipo)?.nombre ?? '', concepto: m.concepto, lineas: [] });
+    porId.get(m.idPartida).lineas.push({ linea: m.linea, codigoCuenta: m.codigoCuenta, nombreCuenta: cuentas.find((c) => c.codigo === m.codigoCuenta)?.nombre ?? '',
+      concepto: m.conceptoLinea, debe: m.debe, haber: m.haber });
+  }
+  const lista = [...porId.values()].map((x) => { const t = totalesLineas(x.lineas); return { ...x, totalDebe: t.debe, totalHaber: t.haber }; });
+  const total = totalesLineas(lista.map((x) => ({ debe: x.totalDebe, haber: x.totalHaber })));
+  return { partidas: lista, totalDebe: total.debe, totalHaber: total.haber };
 }

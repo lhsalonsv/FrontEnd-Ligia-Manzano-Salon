@@ -751,6 +751,23 @@ Un solo registro (`tb_config_contable`):
 ```
 Las cuentas arrancan en `null` hasta que la contadora las confirme. En el PUT, cada cuenta debe existir y aceptar movimiento; los tipos de partida deben estar activos; `modo*` es `DETALLE` o `RESUMEN` (400 con `campos` si no).
 
+### Contabilidad: cierre del ejercicio (migración 1.8)
+Roles: **Administrador y Contador**; el Auditor no (403). Orden: 1) la contadora aplica sus ajustes de diciembre (depreciación, provisiones, impuesto sobre la renta, reserva legal; el sistema no los calcula); 2) `partida-cierre`; 3) se cierran los 12 meses; 4) `cerrar`. Fuentes: Código de Comercio arts. 435-446, 123 y 295.
+
+#### `POST /api/contabilidad/ejercicios/{anio}/partida-cierre`
+Sin body. Llama a `fn_generar_partida_cierre(anio, usuario)`: crea en **BORRADOR**, al 31 de diciembre, tipo `PDA`, origen `CIERRE`, la partida que deja en cero cada cuenta de resultado (ingresos, costos y gastos) contra Pérdidas y Ganancias y lleva el resultado a la utilidad (haber) o pérdida (debe) del ejercicio. Responde 201 con la partida (formato de `GET /partidas/{id}`); la contadora la revisa y la aplica con `POST /partidas/{id}/aplicar`. 409 con el mensaje de la función:
+- `Configure en Contabilidad > Parámetros las cuentas de Pérdidas y Ganancias, utilidad del ejercicio y pérdida del ejercicio`
+- `El ejercicio 2026 ya tiene su partida de cierre (bórrela si está en borrador, o anúlela)`
+- `El ejercicio 2026 tiene partidas en borrador: aplíquelas o bórrelas antes del cierre`
+- `El ejercicio 2026 no tiene saldos en cuentas de resultado`
+
+#### `POST /api/contabilidad/ejercicios/{anio}/cerrar`
+Sin body. Llama a `fn_cerrar_ejercicio(anio, usuario)`: marca el ejercicio `CERRADO` (ya no se reabre ningún mes) y, si enero del año siguiente existe y está abierto y la cuenta de utilidades (o pérdidas) anteriores está configurada, deja en BORRADOR (origen `APERTURA`, 1 de enero) el traslado de la utilidad del ejercicio a utilidades anteriores (o de pérdidas anteriores contra pérdida del ejercicio). Responde `{ "idPartidaTraslado": 123 }`, o `null` en ese campo si no se pudo crear. 409 con el mensaje de la función:
+- `El ejercicio 2026 no existe o ya está cerrado`
+- `Cierre primero los 12 meses del ejercicio 2026`
+- `Falta aplicar la partida de cierre del ejercicio 2026`
+- `Quedan cuentas de resultado con saldo en el ejercicio 2026: revise la partida de cierre`
+
 ## Contabilidad: partidas (`tb_partidas`, `tb_partida_detalle`, vista `v_libro_diario`, migración 1.6)
 
 Mismos roles que "Contabilidad: parámetros": **Administrador y Contador** leen y escriben; **Auditor** solo lee (GET); los demás, 403. **Todo cambio va en una sola transacción** (encabezado + líneas) y la API **nunca hace UPDATE ni DELETE sobre una partida APLICADA**: la base lo impide con `fn_partida_valida` y `fn_partida_detalle_valida` (art. 139 del Código Tributario); se corrige anulándola con su inversa. Los errores de esos triggers y de las funciones llegan como 409 con el mensaje (o 400 con `campos` si es de un campo). Los montos van en dólares con 2 decimales.
@@ -801,6 +818,44 @@ Sin body. Llama a `fn_aplicar_partida(id, idUsuario)`: pasa el borrador a APLICA
 Body `{ "motivo": "Registrada por error", "fecha": "2026-11-13" }`. Llama a `fn_anular_partida(id, idUsuario, motivo, fecha)`: crea la partida inversa (mismas cuentas, `debe` y `haber` cambiados, mismo tipo, `origen: ANULACION`, `idPartidaAnula` = la original, `concepto` = `Anulación de la partida PDA 110001: <motivo>`), **ya aplicada** y fechada `fecha`, que debe caer en un mes abierto (puede ser distinto al de la original). La original no cambia. Responde 201 con la partida inversa completa. 409 con el mensaje de la función: `Solo se anulan partidas aplicadas; un borrador se borra`, `La partida 110001 ya es una anulación`, `La partida 110001 ya fue anulada`, `Escriba el motivo de la anulación`, `El mes 10/2026 está cerrado o no existe`. **Una partida se anula una sola vez** y una anulación no se anula (si fue un error, se registra otra partida).
 
 Cerrar un mes (`POST /periodos/{anio}/{mes}/cerrar`) cuenta ahora las partidas en BORRADOR reales del mes: `El mes 11/2026 tiene partidas en borrador: aplíquelas o bórrelas antes de cerrarlo`.
+
+## Contabilidad: reportes (funciones `fn_saldos_cuentas` y `fn_mayor_cuenta`, vista `v_libro_diario`, migración 1.7)
+
+Solo lectura: **Administrador, Contador y Auditor** leen (GET); los demás roles, 403. Todo sale de las partidas **APLICADAS** (las anulaciones cuentan: están aplicadas); un borrador no cuenta. Cada respuesta trae el `emisor` (los mismos datos del emisor de Configuración) para el encabezado de las hojas impresas. Montos en dólares con 2 decimales; las fechas, `AAAA-MM-DD`. Los errores de las funciones llegan como 409 con el mensaje (`La cuenta 999 no existe`, `La fecha final es anterior a la inicial`); un parámetro que falta o no tiene forma, 400.
+
+### `GET /api/contabilidad/reportes/saldos?anio=2026&mes=11&nivel=6`
+Llama a `fn_saldos_cuentas(anio, mes, nivel)`. `nivel` va de 0 a 6 (si falta, 6) y deja las cuentas de nivel menor o igual; `mes` de 1 a 12. Una fila por cuenta, ordenada por `codigo`:
+```json
+{ "emisor": { "nombre": "Ligia Manzano", "nit": "00000000000017", "nrc": "0000017" },
+  "filas": [{ "codigo": "110101", "nombre": "Caja General", "tipo": "ACTIVO", "naturaleza": "D", "nivel": 3, "aceptaMovimiento": true,
+              "saldoInicial": 1063.00, "debe": 113.00, "haber": 0.00, "saldoFinal": 1176.00 }] }
+```
+Reglas (están en la función, el frontend no las repite): cada cuenta **suma sus subcuentas** (las de detalle cuyo código empieza con el suyo); el saldo va según la naturaleza (`D`: debe − haber; `A`: haber − debe); `saldoInicial` es lo anterior al mes; activo, pasivo, capital y cuentas de orden acumulan **desde el primer movimiento**; ingresos, costos y gastos y la liquidadora acumulan **solo desde el 1 de enero del año** (vuelven a cero cada ejercicio aunque no se haya hecho la partida de cierre). Un saldo negativo es un saldo contrario a su naturaleza (por ejemplo, una depreciación acumulada de naturaleza deudora).
+
+Con este endpoint el frontend arma, **sin otro endpoint**, el Balance de comprobación (las filas tal cual; cuadra Σ `debe` = Σ `haber` de las cuentas de nivel 0), el **Balance General** (cuentas de activo, pasivo y capital con `saldoFinal`, más la línea "Utilidad (pérdida) del ejercicio" = Σ ingresos − Σ costos y gastos de nivel 0, dentro del capital; cuadra activo = pasivo + capital), el **Estado de Resultados** (ingresos, costos y gastos de enero al mes) y el **Resumen** (con `nivel=0` de cada uno de los últimos 6 meses: ingresos y costos y gastos del mes = `haber − debe` y `debe − haber` de las cuentas de nivel 0, del año = `saldoFinal`).
+
+### `GET /api/contabilidad/reportes/mayor?cuenta=1101&desde=2026-11-01&hasta=2026-11-30`
+Llama a `fn_mayor_cuenta(cuenta, desde, hasta)`. Cualquier cuenta del plan: una **agrupadora incluye todas sus subcuentas** (como el "Libro Diario Mayor" de ERP Cloud por cuenta mayor). `cuenta` obligatoria; 409 si no existe o `hasta < desde`.
+```json
+{ "emisor": { "nombre": "Ligia Manzano", "nit": "00000000000017", "nrc": "0000017" },
+  "cuenta": { "codigo": "1101", "nombre": "EFECTIVO Y EQUIVALENTE DE EFECTIVO", "naturaleza": "D", "aceptaMovimiento": false },
+  "filas": [{ "fila": 0, "fecha": null, "idPartida": null, "numero": null, "codigoTipo": null, "codigoCuenta": null, "concepto": "Saldo anterior", "debe": null, "haber": null, "saldo": 10215.00 },
+            { "fila": 1, "fecha": "2026-11-03", "idPartida": 1, "numero": "110001", "codigoTipo": "ING", "codigoCuenta": "110101", "concepto": "Ventas del día 03/11/2026", "debe": 113.00, "haber": 0.00, "saldo": 10328.00 }] }
+```
+**La fila 0 es el saldo anterior** (en las cuentas de resultado cuenta solo desde el 1 de enero del año de `desde`); las demás van por fecha, tipo, número y línea con el **saldo corrido** en la naturaleza de la cuenta pedida. `concepto` es el de la línea o, si no tiene, el de la partida. El formato "Por día" lo arma el frontend agrupando por `fecha`.
+
+### `GET /api/contabilidad/reportes/diario?desde=2026-11-01&hasta=2026-11-30&tipo=ING`
+Filas de `v_libro_diario` entre las fechas, **agrupadas por partida** y ordenadas por fecha, tipo y número. `desde` y `hasta` obligatorias; `tipo` opcional (código de tipo de partida; vacío = todos).
+```json
+{ "emisor": { "nombre": "Ligia Manzano", "nit": "00000000000017", "nrc": "0000017" },
+  "partidas": [{ "idPartida": 1, "numero": "110001", "fecha": "2026-11-03", "codigoTipo": "ING", "tipo": "Partida de ingresos", "concepto": "Ventas del día 03/11/2026",
+                 "lineas": [{ "linea": 1, "codigoCuenta": "110101", "nombreCuenta": "Caja General", "concepto": "Ventas del día 03/11/2026", "debe": 113.00, "haber": 0.00 }],
+                 "totalDebe": 113.00, "totalHaber": 113.00 }],
+  "totalDebe": 113.00, "totalHaber": 113.00 }
+```
+`totalDebe` y `totalHaber` de la respuesta son los del rango y deben ser iguales. En la pantalla y en Excel el debe se llama **Cargo** y el haber **Abono**.
+
+El Libro diario y el Libro mayor son libros legales (art. 139 del Código Tributario): se imprimen foliados y con la firma del contador; el frontend recuerda el folio y el contador en el navegador. Las firmas de los estados financieros (Representante legal, Contador y Auditor) están por confirmar con el Código de Comercio.
 
 ## Configuración (`tb_emisores`, `tb_parametros`, `tb_horarios`, `tb_formas_pago`, `tb_usuarios`)
 
