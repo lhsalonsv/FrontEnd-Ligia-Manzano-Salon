@@ -39,7 +39,7 @@ export const celdas = (columnas, valores, clases = '') => valores.map((v, i) => 
 
 /**
  * Un folio. columnas: [{ h, num?, c: (fila) => html }]. `subtitulo`, `totales` (un html por columna) y `pie` son HTML ya escapado;
- * `totales` y `pie` se pasan solo en la última hoja. `derecha` es texto (ej. "Mes: noviembre de 2026").
+ * `totales` y `pie` se pasan solo en la última hoja. `folio` es opcional (una partida suelta no se folia). `derecha` es texto (ej. "Mes: noviembre de 2026").
  */
 export function htmlHoja({ emisor, titulo, derecha, folio, subtitulo = '', grilla, columnas, filas, totales = null, pie = '' }) {
   const primeraNum = columnas.findIndex((c) => c.num);
@@ -47,7 +47,7 @@ export function htmlHoja({ emisor, titulo, derecha, folio, subtitulo = '', grill
     <header class="hoja-encabezado">
       <p><b class="block font-semibold">${escapar(emisor.nombre)}</b>NIT ${escapar(nitConGuiones(emisor.nit))} · NRC ${escapar(nrcConGuion(emisor.nrc))}</p>
       <h1 class="text-center text-base">${escapar(titulo)}</h1>
-      <p class="text-right">${escapar(derecha)}<b class="block font-semibold">Folio ${folio}</b></p>
+      <p class="text-right">${escapar(derecha)}${folio ? `<b class="block font-semibold">Folio ${folio}</b>` : ''}</p>
     </header>
     ${subtitulo ? `<p class="mb-1 truncate text-sm">${subtitulo}</p>` : ''}
     <div class="hoja-fila hoja-cabecera">${celdas(columnas, columnas.map((c) => escapar(c.h)))}</div>
@@ -82,5 +82,5 @@ export function montarBarra(barra, { volverHref, volverTexto, estado, alCambiar,
 /** "Nombre y firma del contador" para el pie de la última hoja. */
 export const pieFirma = (contador) => `<p class="mt-auto flex items-end gap-2 text-sm">Nombre y firma del contador: <span class="inline-block w-64 border-b border-texto-principal"></span> Nombre: <b class="font-semibold">${escapar(contador)}</b></p>`;
 
-/** Varias firmas en el pie de la última hoja (p. ej. el acta de inventario físico). firmas: [{ rotulo, nombre? }]; `nombre` es texto. */
-export const pieFirmas = (firmas) => `<div class="mt-auto flex items-end justify-around gap-8 text-sm">${firmas.map((f) => `<p class="w-96 text-center"><span class="block border-b border-texto-principal pt-8"></span>${escapar(f.rotulo)}${f.nombre ? `<b class="block font-semibold">${escapar(f.nombre)}</b>` : ''}</p>`).join('')}</div>`;
+/** Varias firmas en el pie de la última hoja (p. ej. el acta de inventario físico). firmas: [{ rotulo, nombre? }]; `nombre` es texto; `ancho`: clase de ancho de cada firma (w-64 para tres). */
+export const pieFirmas = (firmas, ancho = 'w-96') => `<div class="mt-auto flex items-end justify-around gap-8 text-sm">${firmas.map((f) => `<p class="${ancho} text-center"><span class="block border-b border-texto-principal pt-8"></span>${escapar(f.rotulo)}${f.nombre ? `<b class="block font-semibold">${escapar(f.nombre)}</b>` : ''}</p>`).join('')}</div>`;

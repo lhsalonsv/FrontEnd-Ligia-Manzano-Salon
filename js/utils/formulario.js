@@ -4,6 +4,7 @@
  * (los de la validación del frontend y los `campos` que manda el backend en un 400/409).
  */
 import { escapar } from './formato.js';
+import { icono } from './icons.js';
 
 /**
  * Campo con etiqueta, caja y mensaje de error.
@@ -11,13 +12,17 @@ import { escapar } from './formato.js';
  *        nombre = clave del JSON (camelCase, igual al name del control); columna = columna del SQL (data-campo).
  */
 export function campo({ nombre, columna, etiqueta, obligatorio = false, ayuda = '', control }) {
-  return `<div data-campo="${columna}">
+  // min-w-0: dentro de una grilla, un select con opciones largas no debe ensanchar la página
+  return `<div data-campo="${columna}" class="min-w-0">
     <label class="campo-etiqueta" for="f-${nombre}">${etiqueta}${obligatorio ? ' <span class="text-estado-error" aria-hidden="true">*</span>' : ' <span class="opcional">opcional</span>'}</label>
     <div class="campo-caja">${control}</div>
     ${ayuda ? `<p class="campo-ayuda" id="ayuda-${nombre}">${ayuda}</p>` : ''}
     <p class="campo-error hidden" id="error-${nombre}"></p>
   </div>`;
 }
+
+/** Aviso con icono y texto (`clase`: aviso-error, aviso-exito, aviso-info o aviso-aviso). */
+export const aviso = (clase, icon, texto) => `<div class="aviso ${clase}" role="${clase === 'aviso-error' ? 'alert' : 'status'}">${icono(icon)}<p>${escapar(texto)}</p></div>`;
 
 /** <input> con id f-<nombre> y su valor escapado. */
 export const entrada = (nombre, valor, extra = '') =>

@@ -42,6 +42,9 @@ registro-inventario.html   Registro de control de inventarios (admin, contador, 
 registro-inventario-imprimir.html  Registro de control de inventarios en hojas foliadas (art. 142-A del Código Tributario), se abre desde registro-inventario.html
 inventario-fisico.html     Inventario físico (admin, contador, auditor): conteo al 31 de diciembre (art. 142 del Código Tributario), comparativo contra el sistema y cierre con ajustes PEPS
 inventario-fisico-imprimir.html  Acta de inventario físico en hojas foliadas con firma del sujeto pasivo y del contador, se abre desde inventario-fisico.html
+partidas.html              Contabilidad → Partidas (admin, contador; auditor solo lee): lista con filtros, detalle, formulario de borrador, aplicar, anular con partida inversa y Excel (art. 139 del Código Tributario)
+partida-imprimir.html      Una partida en hoja carta con las firmas Hecho por, Revisado por y Autorizado por, se abre desde partidas.html
+contabilidad-parametros.html  Contabilidad → Parámetros (admin, contador; auditor solo lee): plan de cuentas en árbol con Excel, ejercicios y períodos (cerrar/reabrir), tipos de partida y configuración contable
 bitacora.html              Bitácora: registros del día por módulo, persona o texto; qué cambió; exportar a Excel
 configuracion.html         Configuración (solo Administrador): negocio y Hacienda, reglas del salón, usuarios y la matriz de roles (borrador)
 css/input.css              Tema (tokens del diseño) y componentes → se compila a css/styles.css

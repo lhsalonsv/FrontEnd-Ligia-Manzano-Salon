@@ -67,6 +67,8 @@
   html { -webkit-font-smoothing: antialiased; }
   body { @apply bg-fondo-app font-sans text-base leading-normal text-texto-principal; }
   h1, h2, h3 { @apply font-semibold text-balance; }
+  /* El navegador le pone min-width: min-content: un select largo dentro ensancharía la página en el celular */
+  fieldset { min-width: 0; }
   /* Foco visible en todo lo interactivo (accesibilidad) */
   :focus-visible { outline: 2px solid var(--color-accion-foco); outline-offset: 2px; }
 }
@@ -170,6 +172,9 @@
 
   /* Bitácora: hora | quién | módulo | qué pasó (angosta: hora | qué pasó, con quién y módulo debajo) */
   .fila-b { @apply grid grid-cols-[72px_minmax(0,1fr)] items-center gap-3 px-4 @2xl:grid-cols-[80px_168px_112px_minmax(0,1fr)]; }
+
+  /* Plan de cuentas: código | nombre | tipo | naturaleza | movimiento | activa | acción */
+  .fila-cta { @apply grid grid-cols-[104px_minmax(0,1fr)_96px_80px_64px_56px_64px] items-center gap-x-3 px-4; }
 
   .fila-p { @apply grid grid-cols-[minmax(0,1fr)_120px] items-center gap-3 px-4 @md:grid-cols-[minmax(0,1fr)_120px_80px] @2xl:grid-cols-[minmax(0,1fr)_128px_88px_80px_88px]; }
 

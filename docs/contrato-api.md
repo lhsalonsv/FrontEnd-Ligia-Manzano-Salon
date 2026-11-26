@@ -702,6 +702,106 @@ Body `{ "observaciones": "..." }` (opcional). Una sola llamada a `fn_cerrar_inve
 
 **Cerrar después de la fecha de corte está permitido** (p. ej. contar el 31 de diciembre y cerrar en enero, con ventas en medio): la diferencia se calcula contra la existencia del día de corte y los ajustes quedan fechados ese día a las 23:59:59, así que el kardex y el acta cuadran con lo contado. Un faltante sale por PEPS de los lotes que tenían existencia al corte, sin pasar de lo que les queda hoy; un sobrante entra como lote nuevo al costo del último lote anterior al corte (si nunca se compró antes del corte, 409 por falta de costo).
 
+## Contabilidad: parámetros (`tb_cuentas_contables`, `tb_ejercicios`, `tb_periodos_contables`, `tb_tipos_partida`, `tb_config_contable`, migración 1.6)
+
+Todo `/api/contabilidad/*`: **Administrador y Contador** leen y escriben; **Auditor** solo lee (GET); los demás roles, 403. El plan de cuentas del salón (718 cuentas) se carga con `modelo/catalogo_cuentas_salon.sql`. Los errores de los triggers y funciones de la base llegan como 400 (con `campos` si se sabe cuál) o 409 (con el mensaje de la función).
+
+### `GET /api/contabilidad/cuentas`
+Lista plana ordenada por `codigo` (el árbol lo arma el frontend con `codigoPadre`; la hija va después de su padre).
+```json
+[{ "codigo": "110101", "nombre": "Caja general", "tipo": "ACTIVO", "naturaleza": "D", "nivel": 2, "codigoPadre": "1101", "aceptaMovimiento": true, "activa": true }]
+```
+`tipo`: `ACTIVO`, `PASIVO`, `CAPITAL`, `INGRESO`, `COSTO_GASTO`, `LIQUIDADORA`, `ORDEN_DEUDORA`, `ORDEN_ACREEDORA`. `naturaleza`: `D` o `A`.
+
+### `POST /api/contabilidad/cuentas`
+Body: `{ codigo, nombre, tipo, naturaleza, nivel, codigoPadre, aceptaMovimiento }` (`codigoPadre` null para nivel 0). Responde 201 con la cuenta (`activa: true`). 400 con `campos` si: el código no son 1 a 12 dígitos o ya existe; la hija no empieza con el código del padre o no es más larga; el padre acepta movimiento (`La cuenta X acepta movimiento: no puede tener subcuentas`); nivel fuera de 0 a 9 o no coincide con el padre (nivel 0 solo sin padre). El frontend sugiere tipo, naturaleza y nivel (padre + 1) desde el padre.
+
+### `PUT /api/contabilidad/cuentas/{codigo}`
+Body: `{ nombre, aceptaMovimiento, activa }`. **El código, el padre, el tipo y la naturaleza no cambian** (`El código de una cuenta no se cambia`). 400 si una cuenta con subcuentas pasa a aceptar movimiento (`La cuenta X tiene subcuentas: no puede aceptar movimiento`) o si el nombre va vacío. Responde la cuenta.
+
+### `DELETE /api/contabilidad/cuentas/{codigo}`
+Solo si no tiene subcuentas ni líneas de partida; si no, 409 ("tiene subcuentas / partidas: desactívela"). Lo normal es desactivar con el PUT; la pantalla de esta fase no borra.
+
+### `GET /api/contabilidad/ejercicios`
+```json
+[{ "anio": 2026, "fechaInicio": "2026-01-01", "fechaFin": "2026-12-31", "estado": "ABIERTO",
+   "periodos": [{ "mes": 1, "estado": "CERRADO", "cerradoEn": "2026-02-05T09:00:00-06:00" }, { "mes": 11, "estado": "ABIERTO", "cerradoEn": null }] }]
+```
+Por año, `periodos` trae los 12 meses ordenados.
+
+### `POST /api/contabilidad/ejercicios`
+Body: `{ "anio": 2027 }`. Llama a `fn_crear_ejercicio`: crea el ejercicio con sus 12 meses abiertos. 409 si el año ya existe; 400 si no está entre 2000 y 2100. Responde 201 con el ejercicio.
+
+### `POST /api/contabilidad/periodos/{anio}/{mes}/cerrar` y `/reabrir`
+Sin body. `cerrar` llama a `fn_cerrar_periodo` (con el usuario del token); `reabrir`, a `fn_reabrir_periodo` y **queda en la bitácora**. Responde el ejercicio actualizado. 409 con el mensaje de la función:
+- `Solo se puede cerrar el mes abierto más antiguo (11/2026)`
+- `El mes 11/2026 tiene partidas en borrador: aplíquelas o bórrelas antes de cerrarlo`
+- `Solo se puede reabrir el último mes cerrado (10/2026)`
+- `El ejercicio 2026 está cerrado`
+
+### `GET /api/contabilidad/tipos-partida` · `POST` · `PUT /api/contabilidad/tipos-partida/{codigo}`
+`[{ "codigo": "PDA", "nombre": "Partida de diario", "predeterminado": true, "activo": true }]`. `POST` y `PUT` reciben ese mismo objeto (el `codigo` del PUT no cambia). `codigo`: 3 letras mayúsculas. Hay **exactamente un** predeterminado: marcar uno quita la marca al anterior en la misma transacción; quitarle la marca al único predeterminado o desactivarlo es 400. 409 si el código ya existe.
+
+### `GET /api/contabilidad/configuracion` · `PUT /api/contabilidad/configuracion`
+Un solo registro (`tb_config_contable`):
+```json
+{ "ctaUtilidadEjercicio": null, "ctaUtilidadesAnteriores": null, "ctaPerdidaEjercicio": null, "ctaPerdidasAnteriores": null,
+  "ctaPerdidasGanancias": null, "ctaReservaLegal": null, "ctaClientes": null, "ctaProveedores": null,
+  "tipoPartidaVentas": "ING", "tipoPartidaCompras": "COM", "modoVentas": "DETALLE", "modoCompras": "DETALLE" }
+```
+Las cuentas arrancan en `null` hasta que la contadora las confirme. En el PUT, cada cuenta debe existir y aceptar movimiento; los tipos de partida deben estar activos; `modo*` es `DETALLE` o `RESUMEN` (400 con `campos` si no).
+
+## Contabilidad: partidas (`tb_partidas`, `tb_partida_detalle`, vista `v_libro_diario`, migración 1.6)
+
+Mismos roles que "Contabilidad: parámetros": **Administrador y Contador** leen y escriben; **Auditor** solo lee (GET); los demás, 403. **Todo cambio va en una sola transacción** (encabezado + líneas) y la API **nunca hace UPDATE ni DELETE sobre una partida APLICADA**: la base lo impide con `fn_partida_valida` y `fn_partida_detalle_valida` (art. 139 del Código Tributario); se corrige anulándola con su inversa. Los errores de esos triggers y de las funciones llegan como 409 con el mensaje (o 400 con `campos` si es de un campo). Los montos van en dólares con 2 decimales.
+
+Reglas de la base que el frontend repite para avisar antes: el mes de la `fecha` debe estar ABIERTO (`El mes 10/2026 está cerrado o no existe`); las líneas solo usan cuentas activas que aceptan movimiento (`La cuenta 1101 no acepta movimiento o está inactiva`); cada línea lleva el monto en el `debe` o en el `haber`, no en los dos ni en cero; aplicar exige 2 o más líneas y `debe = haber` al centavo (`La partida no cuadra: debe 10.00, haber 9.00 (2 líneas)`). El `numero` (`char(6)`) es **MM + correlativo de 4 dígitos por tipo y mes** (`110001`: la primera de noviembre de ese tipo) y se asigna al aplicar, no al crear: un borrador tiene `numero: null`.
+
+### `GET /api/contabilidad/partidas?anio=2026&mes=&tipo=&estado=&buscar=&pagina=0&tamano=50`
+Todos los filtros son opcionales. `estado`: `BORRADOR` o `APLICADA`; `buscar`: parte del `numero` o del `concepto` (sin distinguir mayúsculas ni tildes). Orden: `fecha` descendente, luego `idPartida` descendente. Paginación estándar (`{ contenido, totalElementos }`), sin las líneas:
+```json
+{ "contenido": [{ "idPartida": 5, "anio": 2026, "mes": 11, "numero": "110002", "fecha": "2026-11-13", "codigoTipo": "PDA", "concepto": "Anulación de la partida PDA 110001: …",
+    "estado": "APLICADA", "origen": "ANULACION", "totalDebe": 25.00, "totalHaber": 25.00,
+    "idPartidaAnula": 4, "numeroAnula": "110001", "idPartidaAnuladaPor": null, "numeroAnuladaPor": null,
+    "creadoPor": "Mario Pérez", "creadoEn": "2026-11-13T18:00:00-06:00", "aplicadaPor": "Mario Pérez", "aplicadaEn": "2026-11-13T18:00:00-06:00" }],
+  "totalElementos": 6 }
+```
+`origen`: `MANUAL` (las de esta pantalla) o `ANULACION`; los demás orígenes de la base (`VENTAS`, `PLANILLA`…) los usarán las partidas automáticas de una fase posterior. `idPartidaAnula`/`numeroAnula`: en una anulación, la partida que revierte. `idPartidaAnuladaPor`/`numeroAnuladaPor`: en la original, su anulación (`a.id_partida` de `v_libro_diario`). La pantalla muestra **Borrador**, **Aplicada**, **Anulada por XXXXXX** (tiene `numeroAnuladaPor`) o **Anulación de XXXXXX** (tiene `numeroAnula`).
+
+### `GET /api/contabilidad/partidas/{id}`
+Lo mismo y además `nombreTipo`, `lineas` y `emisor` (para imprimir; los mismos datos del emisor de Configuración). 404 si no existe.
+```json
+{ "idPartida": 1, "numero": "110001", "fecha": "2026-11-03", "codigoTipo": "ING", "nombreTipo": "Partida de ingresos", "concepto": "Ventas del día 03/11/2026", "estado": "APLICADA",
+  "totalDebe": 113.00, "totalHaber": 113.00, "idPartidaAnula": null, "idPartidaAnuladaPor": null,
+  "lineas": [{ "linea": 1, "codigoCuenta": "110101", "nombreCuenta": "Caja General", "concepto": null, "debe": 113.00, "haber": 0 },
+             { "linea": 2, "codigoCuenta": "61010107", "nombreCuenta": "Servicios de Salón", "concepto": "Servicios de salón sin IVA", "debe": 0, "haber": 100.00 },
+             { "linea": 3, "codigoCuenta": "210702", "nombreCuenta": "IVA Por Ventas Facturas Consumidor Final", "concepto": "IVA 13 % de las ventas", "debe": 0, "haber": 13.00 }],
+  "emisor": { "nombre": "Ligia Manzano", "nit": "00000000000017", "nrc": "0000017" } }
+```
+`concepto` de una línea es opcional (`null`); `v_libro_diario` usa entonces el de la partida.
+
+### `POST /api/contabilidad/partidas`
+Crea un **borrador** (`estado: BORRADOR`, `origen: MANUAL`, `numero: null`, `id_usuario_crea` del token). Body:
+```json
+{ "fecha": "2026-11-05", "codigoTipo": "PDA", "concepto": "Provisión de planilla",
+  "lineas": [{ "codigoCuenta": "51010101", "concepto": "Sueldos de noviembre", "debe": 800.00, "haber": 0 }, { "codigoCuenta": "210301", "concepto": null, "debe": 0, "haber": 800.00 }] }
+```
+`anio` y `mes` salen de `fecha`; `linea` se numera desde 1 en el orden recibido. **Se guarda aunque no cuadre** (solo `aplicar` lo exige). Responde 201 con la partida completa. 400 con `campos` (`fecha`, `codigoTipo` —activo—, `concepto` —obligatorio, hasta 300—, `lineas` con `Línea 2: …`); 409 con el mensaje del trigger si el mes está cerrado o una cuenta no acepta movimiento.
+
+### `PUT /api/contabilidad/partidas/{id}`
+**Solo BORRADOR**: mismo body que el POST; **reemplaza las líneas** (borra las anteriores e inserta las nuevas, en la misma transacción). Responde la partida. Si está aplicada, 409 `La partida 110001 está aplicada: no se modifica (art. 139 del Código Tributario)`.
+
+### `DELETE /api/contabilidad/partidas/{id}`
+**Solo BORRADOR** (las líneas se borran en cascada). 204. Si está aplicada, 409 `La partida 110001 está aplicada: no se borra (art. 139 del Código Tributario). Anúlela con una partida inversa`.
+
+### `POST /api/contabilidad/partidas/{id}/aplicar`
+Sin body. Llama a `fn_aplicar_partida(id, idUsuario)`: pasa el borrador a APLICADA, le asigna el número y guarda quién y cuándo. Responde `{ "numero": "110001" }`. 409 con el mensaje: `La partida no cuadra: debe …, haber … (n líneas)`, `El mes 10/2026 está cerrado o no existe`, `La partida 7 no existe o ya está aplicada`.
+
+### `POST /api/contabilidad/partidas/{id}/anular`
+Body `{ "motivo": "Registrada por error", "fecha": "2026-11-13" }`. Llama a `fn_anular_partida(id, idUsuario, motivo, fecha)`: crea la partida inversa (mismas cuentas, `debe` y `haber` cambiados, mismo tipo, `origen: ANULACION`, `idPartidaAnula` = la original, `concepto` = `Anulación de la partida PDA 110001: <motivo>`), **ya aplicada** y fechada `fecha`, que debe caer en un mes abierto (puede ser distinto al de la original). La original no cambia. Responde 201 con la partida inversa completa. 409 con el mensaje de la función: `Solo se anulan partidas aplicadas; un borrador se borra`, `La partida 110001 ya es una anulación`, `La partida 110001 ya fue anulada`, `Escriba el motivo de la anulación`, `El mes 10/2026 está cerrado o no existe`. **Una partida se anula una sola vez** y una anulación no se anula (si fue un error, se registra otra partida).
+
+Cerrar un mes (`POST /periodos/{anio}/{mes}/cerrar`) cuenta ahora las partidas en BORRADOR reales del mes: `El mes 11/2026 tiene partidas en borrador: aplíquelas o bórrelas antes de cerrarlo`.
+
 ## Configuración (`tb_emisores`, `tb_parametros`, `tb_horarios`, `tb_formas_pago`, `tb_usuarios`)
 
 Todo `/api/configuracion/*` y `/api/usuarios/*` es **solo para el rol Administrador** (403 para los demás). Cada cambio va a la bitácora con el usuario del token.
