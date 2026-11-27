@@ -10,13 +10,13 @@
 import { exigirSesion } from '../utils/session.js';
 import { icono } from '../utils/icons.js';
 import { escapar, fechaIso, MESES } from '../utils/formato.js';
-import { CLAVE_CONTADOR, repartir, htmlHoja, montarBarra, pieFirma, pieFirmas, folioGuardado, leerLocal, guardarLocal, fechaDMY, montoHoja } from '../utils/hojas.js';
+import { CLAVE_CONTADOR, CLAVE_AUDITOR, repartir, htmlHoja, montarBarra, pieFirma, pieFirmas, folioGuardado, leerLocal, guardarLocal, fechaDMY, montoHoja } from '../utils/hojas.js';
 import { ultimoDia, modeloDiario, modeloMayor, modeloComprobacion, modeloBalanceGeneral, modeloResultados } from '../utils/reportesContables.js';
 import { obtenerSaldos, obtenerMayor, obtenerDiario } from '../services/contabilidadService.js';
 
 // Firmas de los estados financieros (Código de Comercio arts. 283, 286 y 441): los certifica el contador público y los dictamina el auditor externo
-// (confirmado el 25 de noviembre). `contador`: lleva el nombre de la barra.
-const FIRMAS_ESTADOS = [{ rotulo: 'Representante legal' }, { rotulo: 'Contador', contador: true }, { rotulo: 'Auditor externo' }];
+// (confirmado el 25 de noviembre). `campo`: el nombre sale de ese campo de la barra; no hay contador ni auditor fijos (auditor, 27 nov).
+const FIRMAS_ESTADOS = [{ rotulo: 'Representante legal' }, { rotulo: 'Contador', campo: 'contador' }, { rotulo: 'Auditor externo', campo: 'auditor' }];
 
 const sesion = exigirSesion();
 const $ = (id) => document.getElementById(id);
@@ -88,7 +88,7 @@ function hojas() {
   const grupos = repartir(modelo.filas, RESERVA, FILAS_POR_HOJA);
   const totales = modelo.totales?.map((v) => (v == null ? '' : typeof v === 'number' ? montoHoja(v) : escapar(v)));
   const firmas = reporte.libro ? pieFirma(estado.contador)
-    : pieFirmas(FIRMAS_ESTADOS.map((f) => ({ rotulo: f.rotulo, nombre: f.contador ? estado.contador : '' })), 'w-64');
+    : pieFirmas(FIRMAS_ESTADOS.map((f) => ({ rotulo: f.rotulo, nombre: f.campo ? estado[f.campo] : '' })), 'w-64');
   return grupos.map((filas, i) => {
     const ultima = i === grupos.length - 1;
     return htmlHoja({
@@ -110,10 +110,12 @@ const aviso = (icon, clase, html) => { $('hojas').innerHTML = `<div class="aviso
 async function iniciar() {
   estado.contador = leerLocal(CLAVE_CONTADOR) ?? '';
   if (reporte?.libro) estado.folio = folioGuardado(claveFolio);
+  else estado.auditor = leerLocal(CLAVE_AUDITOR) ?? ''; // los estados financieros llevan además la firma del auditor externo
   montarBarra($('barra'), {
     volverHref: `reportes-contables.html${location.search}`, volverTexto: 'Reportes', estado, alCambiar: pintar,
     alImprimir: () => {
       guardarLocal(CLAVE_CONTADOR, estado.contador);
+      if (estado.auditor !== undefined) guardarLocal(CLAVE_AUDITOR, estado.auditor);
       if (reporte?.libro) guardarLocal(claveFolio, String(estado.folio + hojas().length)); // último folio usado + 1
     },
   });

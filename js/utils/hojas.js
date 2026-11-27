@@ -17,6 +17,7 @@ export const AVISO_SIN_EMISOR = 'Faltan los datos del negocio';
 
 /** Nombre del contador que se recuerda entre libros. */
 export const CLAVE_CONTADOR = 'lms.libro-contador';
+export const CLAVE_AUDITOR = 'lms.libro-auditor';
 
 export const leerLocal = (clave) => { try { return localStorage.getItem(clave); } catch { return null; } };
 export const guardarLocal = (clave, valor) => { try { localStorage.setItem(clave, valor); } catch { /* sin almacenamiento: se pierde el recordatorio */ } };
@@ -66,8 +67,8 @@ export function htmlHoja({ emisor, titulo, derecha, folio, subtitulo = '', grill
 }
 
 /**
- * La barra de arriba (no sale al imprimir): volver, primer folio, nombre del contador e imprimir.
- * `estado` es { folio, contador }; los cambios lo actualizan y llaman a `alCambiar`. `alImprimir` guarda los recordatorios.
+ * La barra de arriba (no sale al imprimir): volver, primer folio, nombre del contador (y del auditor, si `estado` trae `auditor`) e imprimir.
+ * `estado` es { folio, contador, auditor? }; los cambios lo actualizan y llaman a `alCambiar`. `alImprimir` guarda los recordatorios.
  * Deja un <p id="siguiente"> para que la pantalla escriba el siguiente folio.
  */
 export function montarBarra(barra, { volverHref, volverTexto, estado, alCambiar, alImprimir }) {
@@ -75,6 +76,7 @@ export function montarBarra(barra, { volverHref, volverTexto, estado, alCambiar,
     <a href="${volverHref}" class="btn btn-secundario">${icono('izquierda')}${escapar(volverTexto)}</a>
     <label><span class="campo-etiqueta">Primer folio</span><span class="campo-caja w-32"><input id="folio" type="number" min="1" step="1" value="${estado.folio}" class="w-full tabular-nums"></span></label>
     <label><span class="campo-etiqueta">Nombre del contador</span><span class="campo-caja w-72"><input id="contador" type="text" value="${escapar(estado.contador)}" autocomplete="off" class="w-full"></span></label>
+    ${estado.auditor === undefined ? '' : `<label><span class="campo-etiqueta">Nombre del auditor</span><span class="campo-caja w-72"><input id="auditor" type="text" value="${escapar(estado.auditor)}" autocomplete="off" class="w-full"></span></label>`}
     <button type="button" id="imprimir" class="btn btn-primario">${icono('imprimir')}Imprimir</button>
     <p id="siguiente" class="py-2.5 text-15 text-texto-secundario tabular-nums"></p>`;
 
@@ -84,6 +86,7 @@ export function montarBarra(barra, { volverHref, volverTexto, estado, alCambiar,
     alCambiar();
   });
   document.getElementById('contador').addEventListener('input', (e) => { estado.contador = e.target.value.trim(); alCambiar(); });
+  document.getElementById('auditor')?.addEventListener('input', (e) => { estado.auditor = e.target.value.trim(); alCambiar(); });
   document.getElementById('imprimir').addEventListener('click', () => { alImprimir(); window.print(); });
 }
 
