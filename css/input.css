@@ -67,6 +67,8 @@
   html { -webkit-font-smoothing: antialiased; }
   body { @apply bg-fondo-app font-sans text-base leading-normal text-texto-principal; }
   h1, h2, h3 { @apply font-semibold text-balance; }
+  /* Edge pone su propio ojo en las contraseñas; ya tenemos el botón Mostrar */
+  input::-ms-reveal, input::-ms-clear { display: none; }
   /* El navegador le pone min-width: min-content: un select largo dentro ensancharía la página en el celular */
   fieldset { min-width: 0; }
   /* Foco visible en todo lo interactivo (accesibilidad) */

@@ -91,9 +91,11 @@ const CHIPS = [['TODOS', 'Todos'], ['ACTIVO', 'Activo'], ['PASIVO', 'Pasivo'], [
 const CABECERA_CUENTAS = ['Código', 'Nombre', 'Tipo', 'Naturaleza', 'Movimiento', 'Activa', ''];
 
 function prepararCuentas(cuentas) {
-  estado.cuentas = cuentas;
-  estado.filas = cuentas.map((c) => ({ c, texto: sinTildes(`${c.codigo} ${c.nombre}`) }));
-  estado.conHijas = new Set(cuentas.map((c) => c.codigoPadre).filter(Boolean));
+  // Orden de árbol: por código como texto, cada hija queda debajo de su padre (1, 11, 1101, 110101, 12, 2…),
+  // venga como venga de la API (el catálogo se cargó por nivel)
+  estado.cuentas = cuentas.toSorted((a, b) => (a.codigo < b.codigo ? -1 : a.codigo > b.codigo ? 1 : 0));
+  estado.filas = estado.cuentas.map((c) => ({ c, texto: sinTildes(`${c.codigo} ${c.nombre}`) }));
+  estado.conHijas = new Set(estado.cuentas.map((c) => c.codigoPadre).filter(Boolean));
 }
 
 /** Sin filtro: el árbol con los grupos contraídos escondiendo a sus descendientes. Con filtro: solo las que coinciden. */
@@ -466,6 +468,7 @@ if (sesion && !ROLES.includes(sesion.usuario.rol)) {
 
   $('pestanas').addEventListener('click', (e) => { const b = e.target.closest('[data-pestana]'); if (b) cambiarPestana(b.dataset.pestana); });
   $('chips').addEventListener('change', (e) => { estado.tipo = e.target.value; pintarCuentas(); });
+  $('cuentas-cabecera').innerHTML = CABECERA_CUENTAS.map((t) => `<span>${t}</span>`).join('');
   $('buscar').addEventListener('input', (e) => { estado.buscar = e.target.value; pintarCuentas(); });
   $('expandir').addEventListener('click', () => { estado.contraidas = new Set(); pintarCuentas(); });
   $('contraer').addEventListener('click', () => { contraerTodo(); pintarCuentas(); });
