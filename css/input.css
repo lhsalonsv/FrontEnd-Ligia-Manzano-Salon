@@ -213,6 +213,7 @@
   .hoja-fila { @apply grid items-center gap-x-2 border-b border-borde-default px-1 tabular-nums; grid-template-columns: var(--grilla); height: 10mm; }
   .hoja-fila > * { @apply min-w-0 truncate; }
   .hoja-cabecera { @apply border-y border-borde-fuerte font-semibold; height: 7mm; }
+  .hoja-cabecera > * { @apply overflow-visible whitespace-normal leading-none; } /* "Gravadas import." cabe en dos líneas sin cambiar el alto */
   .hoja-total { @apply border-t border-borde-fuerte font-semibold; height: 8mm; }
   .hoja-linea2 { @apply block truncate font-mono text-texto-secundario; font-size: 0.625rem; }
   .hoja-resumen { @apply text-xs tabular-nums; width: 120mm; }

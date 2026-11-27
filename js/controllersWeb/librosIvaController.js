@@ -76,11 +76,13 @@ const LIBROS = {
       conSigno(r, r.comprasGravadas), conSigno(r, r.creditoFiscal), conSigno(r, r.totalDocumento)],
     totales: (f) => [suma(f, 'comprasGravadas'), suma(f, 'creditoFiscal'), suma(f, 'totalDocumento')],
     excel: {
-      columnas: ['N.º', 'Fecha', 'Tipo', 'Documento', 'NIT o NRC', 'NRC', 'DUI', 'Proveedor', 'Exentas', 'Gravadas', 'Crédito fiscal', 'Percepción 1 %', 'Total'],
-      anchos: [6, 12, 16, 34, 16, 10, 11, 34, 11, 12, 13, 14, 12],
+      // Importaciones y sujetos excluidos van en 0: el salón no los tiene, pero el libro del contador trae esas columnas
+      columnas: ['N.º', 'Fecha', 'Tipo', 'Documento', 'NIT o NRC', 'NRC', 'DUI', 'Proveedor', 'Exentas', 'Exentas import.', 'Gravadas', 'Gravadas import.',
+        'Crédito fiscal', 'Percepción 1 %', 'Total', 'Sujetos excluidos'],
+      anchos: [6, 12, 16, 34, 16, 10, 11, 34, 11, 14, 12, 15, 13, 14, 12, 16],
       fila: (r) => [r.correlativo, r.fecha, TIPO_LARGO[r.tipoDocumento], r.numeroDocumento, r.nitNrc, r.nrc, r.dui, r.nombre,
-        r.signo * r.comprasExentas, r.signo * r.comprasGravadas, r.signo * r.creditoFiscal, r.signo * r.ivaPercibido, r.signo * r.totalDocumento],
-      sumar: [8, 9, 10, 11, 12],
+        r.signo * r.comprasExentas, 0, r.signo * r.comprasGravadas, 0, r.signo * r.creditoFiscal, r.signo * r.ivaPercibido, r.signo * r.totalDocumento, 0],
+      sumar: [8, 9, 10, 11, 12, 13, 14, 15],
     },
   },
   anulados: {

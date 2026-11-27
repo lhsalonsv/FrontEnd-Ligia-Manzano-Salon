@@ -29,6 +29,8 @@ const TIPO = { '01': 'Factura', '03': 'CCF', '05': 'NC', '06': 'ND' };
 const suma = (filas, campo) => centavos(filas.reduce((s, r) => s + (r.signo ?? 1) * (r[campo] ?? 0), 0));
 const sumaDe = (campo) => (filas) => suma(filas, campo);
 const dinero = (campo) => ({ num: true, c: (r) => monto((r.signo ?? 1) * (r[campo] ?? 0)), suma: sumaDe(campo) });
+/** Columna que el libro legal trae pero el salón no usa (importaciones, sujetos excluidos, exportaciones): va en 0. */
+const CERO = { num: true, c: () => monto(0), suma: () => 0 };
 const dos = (a, b) => `<b class="block truncate font-medium">${escapar(a)}</b><small class="hoja-linea2">${escapar(b)}</small>`;
 
 // --- Los 3 libros ------------------------------------------------------------
@@ -71,7 +73,7 @@ const LIBROS = {
       { h: 'Al', c: (r) => dos(r.numeroControlAl, r.alDocumento) },
       { h: 'Exentas', ...dinero('ventasExentas') },
       { h: 'Gravadas (con IVA)', ...dinero('ventasGravadas') },
-      { h: 'Exportaciones', num: true, c: () => monto(0), suma: () => 0 },
+      { h: 'Exportaciones', ...CERO },
       { h: 'Total del día', ...dinero('totalVentas') },
     ],
     resumen: (d) => {
@@ -86,18 +88,21 @@ const LIBROS = {
   },
   compras: {
     clave: 'compras', titulo: 'Libro de compras (art. 86)', reserva: 3,
-    grilla: '8mm 18mm 1.2fr 18mm 1fr repeat(5, 19mm)',
+    // Mismas columnas que el libro que ya autoriza el contador; el NRC va debajo del proveedor para que quepan
+    grilla: '8mm 18mm 1fr 1.2fr 18mm 16mm 18mm 16mm repeat(3, 18mm) 16mm',
     columnas: [
       { h: 'N.º', c: (r) => r.correlativo },
       { h: 'Fecha', c: (r) => fecha(r.fecha) },
       { h: 'Documento', c: (r) => dos(TIPO[r.tipoDocumento], r.numeroDocumento) },
-      { h: 'NRC', c: (r) => escapar(nrcConGuion(r.nrc)) },
-      { h: 'Proveedor', c: (r) => escapar(r.nombre) },
+      { h: 'Proveedor y NRC', c: (r) => dos(r.nombre, nrcConGuion(r.nrc)) },
       { h: 'Exentas', ...dinero('comprasExentas') },
+      { h: 'Exentas import.', ...CERO },
       { h: 'Gravadas', ...dinero('comprasGravadas') },
+      { h: 'Gravadas import.', ...CERO },
       { h: 'Crédito fiscal', ...dinero('creditoFiscal') },
       { h: 'IVA percibido', ...dinero('ivaPercibido') },
       { h: 'Total', ...dinero('totalDocumento') },
+      { h: 'Sujetos excluidos', ...CERO },
     ],
     resumen: null,
   },
