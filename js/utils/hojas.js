@@ -12,6 +12,9 @@ import { centavos } from './calculos.js';
 /** Filas de 2 líneas de 10 mm en una hoja carta horizontal con 10 mm de margen: caben 16 con el encabezado. */
 export const FILAS_POR_HOJA = 16;
 
+/** Lo que sale en el encabezado de la hoja cuando faltan el nombre, el NIT y el NRC del negocio. */
+export const AVISO_SIN_EMISOR = 'Faltan los datos del negocio';
+
 /** Nombre del contador que se recuerda entre libros. */
 export const CLAVE_CONTADOR = 'lms.libro-contador';
 
@@ -44,9 +47,13 @@ export const celdas = (columnas, valores, clases = '') => valores.map((v, i) => 
  */
 export function htmlHoja({ emisor, titulo, derecha, folio, subtitulo = '', grilla, columnas, filas, totales = null, pie = '' }) {
   const primeraNum = columnas.findIndex((c) => c.num);
+  // Sin emisor (la API lo manda null mientras no se carguen los datos del negocio) la hoja no se cae: lo avisa en su lugar
+  const datosNegocio = emisor
+    ? `<b class="block font-semibold">${escapar(emisor.nombre)}</b>NIT ${escapar(nitConGuiones(emisor.nit))} · NRC ${escapar(nrcConGuion(emisor.nrc))}`
+    : `<b class="block font-semibold text-estado-error">${AVISO_SIN_EMISOR}</b>Configuración → Negocio y Hacienda`;
   return `<section class="hoja" data-estilo="--grilla: ${grilla}">
     <header class="hoja-encabezado">
-      <p><b class="block font-semibold">${escapar(emisor.nombre)}</b>NIT ${escapar(nitConGuiones(emisor.nit))} · NRC ${escapar(nrcConGuion(emisor.nrc))}</p>
+      <p>${datosNegocio}</p>
       <h1 class="text-center text-base">${escapar(titulo)}</h1>
       <p class="text-right">${escapar(derecha)}${folio ? `<b class="block font-semibold">Folio ${folio}</b>` : ''}</p>
     </header>

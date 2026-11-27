@@ -32,7 +32,8 @@ const MODULOS = {
   VENTAS: ['Venta', 'Ventas'], ANULACIONES: ['Anulación', 'Anulaciones'], HACIENDA: ['Hacienda', 'Hacienda'],
   CAJA: ['Caja', 'Caja'], AGENDA: ['Agenda', 'Agenda'], CLIENTES: ['Clientes', 'Clientes'],
   SERVICIOS: ['Servicios', 'Servicios'], EMPLEADOS: ['Empleados', 'Empleados'], PLANILLA: ['Planilla', 'Planilla'],
-  INVENTARIO: ['Inventario', 'Inventario'], COMPRAS: ['Compras', 'Compras'], CONFIGURACION: ['Configuración', 'Configuración'],
+  INVENTARIO: ['Inventario', 'Inventario'], COMPRAS: ['Compras', 'Compras'],
+  CONTABILIDAD: ['Contabilidad', 'Contabilidad'], CONFIGURACION: ['Configuración', 'Configuración'],
   USUARIOS: ['Usuarios', 'Usuarios'], SESION: ['Sesión', 'Sesiones'], SEGURIDAD: ['Seguridad', 'Seguridad'],
 };
 const nombreModulo = (m, plural = false) => MODULOS[m]?.[plural ? 1 : 0] ?? m;

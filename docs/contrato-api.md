@@ -41,6 +41,10 @@ Toda respuesta de error usa la misma forma, para que el frontend muestre el mens
 | 404 | No existe |
 | 409 | Conflicto (duplicado, horario ocupado, stock insuficiente) |
 
+Cuando una función o un trigger de la base rechaza algo ("La partida no cuadra…", "El mes 11/2026 está cerrado…", "Solo se puede cerrar el mes abierto más antiguo…"), la API responde **409 con `codigo: "REGLA_DE_LA_BASE"`** y el `mensaje` de la base tal cual: el frontend lo muestra sin cambiarlo. Excepciones con su propio código: la devolución al proveedor (`STOCK_INSUFICIENTE`) y los duplicados (`COMPRA_DUPLICADA`, `PROVEEDOR_DUPLICADO`, `MARCA_DUPLICADA`).
+
+**`emisor` puede venir `null`** en los libros de IVA, el registro de inventarios, el acta del inventario físico, las partidas y los reportes contables mientras no esté cargada la fila de `tb_emisores` (necesita los catálogos CAT-019 y CAT-008). Las hojas impresas no fallan: en lugar del nombre, el NIT y el NRC muestran "Faltan los datos del negocio" (`htmlHoja` en `js/utils/hojas.js`).
+
 ## Autenticación
 
 ### `POST /api/auth/login`
@@ -396,7 +400,7 @@ Todas las columnas de `tb_productos` en camelCase, más lo calculado para el det
 
 - `GET /api/categorias` → `[{ "idCategoria": 1, "nombreCategoria": "Cabello" }]`
 - `GET /api/marcas` → `[{ "idMarca": 1, "nombreMarca": "Aurora Pro" }]`, por nombre.
-- `POST /api/marcas` `{ "nombreMarca": "Aurora Pro" }` → 201 `{ "idMarca": 5, "nombreMarca": "Aurora Pro" }`. Se agrega desde el formulario de producto. 409 con `campos.nombreMarca` si ya existe (sin importar mayúsculas ni tildes).
+- `POST /api/marcas` `{ "nombreMarca": "Aurora Pro" }` → 201 `{ "idMarca": 5, "nombreMarca": "Aurora Pro" }`. Se agrega desde el formulario de producto. 409 `MARCA_DUPLICADA` si ya existe (sin importar mayúsculas ni tildes), con `campos.nombreMarca` e `idMarcaExistente`.
 
 ## Proveedores (`tb_proveedores`)
 
@@ -422,13 +426,15 @@ Todas las columnas en camelCase, más:
 ```json
 {
   "ultimasCompras": [
-    { "idCompra": 160, "numeroCompra": "C-0160", "fechaCompra": "2026-11-20", "productos": 5, "total": 318.40, "fechaVencimientoPago": "2026-12-20" }
+    { "idCompra": 160, "numeroCompra": "C-0160", "fechaCompra": "2026-11-20", "tipoDocumentoProveedor": "CCF", "productos": 5, "gastos": 0,
+      "total": 318.40, "fechaVencimientoPago": "2026-12-20" }
   ],
   "comprasAnio": { "cantidad": 9, "total": 1684.20 }
 }
 ```
 
-- `ultimasCompras`: las 3 más recientes, sin anuladas. `comprasAnio`: las de este año.
+- `ultimasCompras`: las 3 más recientes, sin anuladas. `gastos` = líneas sin producto; `tipoDocumentoProveedor` deja que la ficha marque una `NC`.
+- `comprasAnio`: las de este año, sin anuladas. **Una nota de crédito resta** del total, igual que en el total del mes de `GET /api/compras`.
 
 ### `POST /api/proveedores` y `PUT /api/proveedores/{id}`
 
@@ -529,7 +535,7 @@ Una línea es un **producto** (crea un lote PEPS y una entrada en el kardex `ENT
 | `periodoIva` | `periodo_iva` | primer día del mes en que se declara el crédito fiscal: el de `fechaCompra` o hasta 3 meses después (art. 63 Ley de IVA). Sin IVA aparte, el mes de `fechaCompra` |
 | `comprasExentas` | `compras_exentas` | exento o no sujeto, ≥ 0, 2 decimales; normalmente 0 |
 | `percepcion` | → `iva_percibido` | `true` si el proveedor (gran contribuyente) cobró la percepción de 1 % |
-| `tipoOperacionRenta` · `clasificacionRenta` · `sectorRenta` · `tipoCostoGasto` | columnas `*_renta` y `tipo_costo_gasto` | códigos del anexo (MODELO_DATOS.md → "Códigos de renta"). La pantalla propone: productos = `1/1/4/5`; gastos = `1/2/4/2`; una nota, los de la compra que corrige |
+| `tipoOperacionRenta` · `clasificacionRenta` · `sectorRenta` · `tipoCostoGasto` | columnas `*_renta` y `tipo_costo_gasto` | códigos del anexo (MODELO_DATOS.md → "Códigos de renta"). La pantalla propone: productos = `1/1/4/5`; gastos = `1/2/4/2`; una nota, los de la compra que corrige. **La API guarda los que manda la pantalla** (no los copia de `tb_parametros`) |
 | `detalle` | | al menos 1 línea. Producto: `idProducto` activo, no se repite. Gasto: `descripcion` (hasta 200) sin `idProducto`. **`ND`: solo líneas sin producto.** **`NC`: puede llevar líneas con producto = unidades devueltas** (ver "Nota de crédito con devolución"); una `NC` sin líneas de producto es una rebaja de precio y no mueve unidades |
 | `cantidad` | | entero de 1 a 9999 (un gasto lleva 1). En una línea de producto de una `NC`, además `≤` lo que trajo la compra relacionada y `≤` lo que queda de su lote |
 | `costoUnitario` | | sin IVA, ≥ 0, hasta 4 decimales (en una `FACTURA` u `OTRO`, el costo que se pagó) |
@@ -546,15 +552,16 @@ Respuestas:
 
 - 201 con el mismo objeto de `GET /api/compras/{id}`.
 - 400 con `campos` (`idProveedor`, `fechaCompra`, `numeroDocumentoProveedor`, `codigoGeneracionProveedor`, `idCompraRelacionada`, `periodoIva`, `comprasExentas`, `detalle`). Un error de una línea: `campos.detalle` con el texto ("La línea 2: la cantidad tiene que ser mayor que 0.").
-- 409 `STOCK_INSUFICIENTE` si una `NC` devuelve más unidades de las que le quedan al lote de la compra relacionada (ya se vendieron): `mensaje` con el texto de la base ("Del lote 12 solo quedan 1 unidades: no se pueden devolver 3"). Nada se guarda.
+- 409 `STOCK_INSUFICIENTE` si una `NC` devuelve más unidades de las que le quedan al lote de la compra relacionada (ya se vendieron): `mensaje` con el texto de la base ("De Shampoo hidratante 400 ml solo quedan 1 unidades del lote de esa compra: no se pueden devolver 3", migración 1.9). Nada se guarda.
 - 409 `COMPRA_DUPLICADA` si ya hay una compra no anulada con ese `numeroDocumentoProveedor` del mismo proveedor o con ese `codigoGeneracionProveedor`: `campos.numeroDocumentoProveedor`, e `idCompraExistente`.
 
 ### Nota de crédito con devolución (migración 1.5)
 
 En una `NC` las líneas **con producto** son las unidades que se devuelven al proveedor; las líneas **sin producto** son rebajas de precio y no mueven unidades. Una `ND` solo lleva líneas sin producto.
 
-- `idProducto` tiene que ser uno de los productos de la compra relacionada (`idCompraRelacionada`), y `cantidad` no puede pasar de lo que esa compra trajo ni de lo que queda de su lote (`cantidadDisponible`). Si no, 400 con `campos.detalle`.
-- No crean lote. La API guarda la `NC` y sus líneas y, **en la misma transacción**, llama `fn_registrar_devolucion_proveedor(idCompra, idUsuario)`: cada línea con producto saca sus unidades del lote que creó la compra relacionada, **al costo de ese lote**, y deja un movimiento `DEVOLUCION_PROVEEDOR` (negativo, con `id_detalle_compra` de la línea de la `NC`) en el kardex.
+- `idProducto` tiene que ser uno de los productos de la compra relacionada (`idCompraRelacionada`) y `cantidad` no puede pasar de lo que esa compra trajo. Si no, **400** con `campos.detalle`.
+- Si `cantidad` pasa de lo que queda del lote (`cantidadDisponible`: el resto ya se vendió), **409 `STOCK_INSUFICIENTE`**. Lo decide la función de la base, en la misma transacción.
+- No crean lote. La API guarda la `NC` y sus líneas y, **en la misma transacción**, llama `fn_registrar_devolucion_proveedor(idCompra, idUsuario)`: cada línea con producto saca sus unidades del lote que creó la compra relacionada, **al costo de ese lote**, y deja un movimiento `DEVOLUCION_PROVEEDOR` (negativo, con `id_detalle_compra` de la línea de la `NC`) en el kardex. Desde la migración 1.9 ese movimiento va a las 12:00 del día de la `NC` o, si eso queda antes, un segundo después de la entrada del lote: el registro de control nunca muestra la devolución antes de su compra.
 - Si el lote ya no tiene las unidades (se vendieron), la función se detiene, la transacción se revierte y la API responde 409 `STOCK_INSUFICIENTE`.
 - La `NC` sigue restando del total del mes y del libro de compras; el kardex trae la `NC` como documento (ver "Registro de control de inventarios").
 
@@ -714,7 +721,7 @@ Lista plana ordenada por `codigo` (el árbol lo arma el frontend con `codigoPadr
 `tipo`: `ACTIVO`, `PASIVO`, `CAPITAL`, `INGRESO`, `COSTO_GASTO`, `LIQUIDADORA`, `ORDEN_DEUDORA`, `ORDEN_ACREEDORA`. `naturaleza`: `D` o `A`.
 
 ### `POST /api/contabilidad/cuentas`
-Body: `{ codigo, nombre, tipo, naturaleza, nivel, codigoPadre, aceptaMovimiento }` (`codigoPadre` null para nivel 0). Responde 201 con la cuenta (`activa: true`). 400 con `campos` si: el código no son 1 a 12 dígitos o ya existe; la hija no empieza con el código del padre o no es más larga; el padre acepta movimiento (`La cuenta X acepta movimiento: no puede tener subcuentas`); nivel fuera de 0 a 9 o no coincide con el padre (nivel 0 solo sin padre). El frontend sugiere tipo, naturaleza y nivel (padre + 1) desde el padre.
+Body: `{ codigo, nombre, tipo, naturaleza, nivel, codigoPadre, aceptaMovimiento }` (`codigoPadre` null para nivel 0). Responde 201 con la cuenta (`activa: true`). 400 con `campos` si: el código no son 1 a 12 dígitos o ya existe; la hija no empieza con el código del padre o no es más larga; el padre acepta movimiento (`La cuenta X acepta movimiento: no puede tener subcuentas`); nivel fuera de 0 a 9, o no **mayor que el del padre** (nivel 0 solo sin padre). No se exige padre + 1: en el catálogo del salón, 1101030101, 1101030102 y 1101030103 son de nivel 6 y su padre 11010301 es de nivel 4. El frontend sugiere tipo, naturaleza y nivel (padre + 1) desde el padre.
 
 ### `PUT /api/contabilidad/cuentas/{codigo}`
 Body: `{ nombre, aceptaMovimiento, activa }`. **El código, el padre, el tipo y la naturaleza no cambian** (`El código de una cuenta no se cambia`). 400 si una cuenta con subcuentas pasa a aceptar movimiento (`La cuenta X tiene subcuentas: no puede aceptar movimiento`) o si el nombre va vacío. Responde la cuenta.
@@ -803,7 +810,7 @@ Crea un **borrador** (`estado: BORRADOR`, `origen: MANUAL`, `numero: null`, `id_
 { "fecha": "2026-11-05", "codigoTipo": "PDA", "concepto": "Provisión de planilla",
   "lineas": [{ "codigoCuenta": "51010101", "concepto": "Sueldos de noviembre", "debe": 800.00, "haber": 0 }, { "codigoCuenta": "210301", "concepto": null, "debe": 0, "haber": 800.00 }] }
 ```
-`anio` y `mes` salen de `fecha`; `linea` se numera desde 1 en el orden recibido. **Se guarda aunque no cuadre** (solo `aplicar` lo exige). Responde 201 con la partida completa. 400 con `campos` (`fecha`, `codigoTipo` —activo—, `concepto` —obligatorio, hasta 300—, `lineas` con `Línea 2: …`); 409 con el mensaje del trigger si el mes está cerrado o una cuenta no acepta movimiento.
+`anio` y `mes` salen de `fecha`; `linea` se numera desde 1 en el orden recibido. **Se guarda aunque no cuadre, e incluso sin líneas** (solo `aplicar` exige 2 o más y que cuadre). Ojo: un borrador vacío también cuenta como borrador, así que impide cerrar su mes y generar la partida de cierre; la pantalla de Parámetros enlaza a `partidas.html?anio=…&mes=…&estado=BORRADOR` para encontrarlos. Responde 201 con la partida completa. 400 con `campos` (`fecha`, `codigoTipo` —activo—, `concepto` —obligatorio, hasta 300—, `lineas` con `Línea 2: …`); 409 con el mensaje del trigger si el mes está cerrado o una cuenta no acepta movimiento.
 
 ### `PUT /api/contabilidad/partidas/{id}`
 **Solo BORRADOR**: mismo body que el POST; **reemplaza las líneas** (borra las anteriores e inserta las nuevas, en la misma transacción). Responde la partida. Si está aplicada, 409 `La partida 110001 está aplicada: no se modifica (art. 139 del Código Tributario)`.
@@ -815,7 +822,7 @@ Crea un **borrador** (`estado: BORRADOR`, `origen: MANUAL`, `numero: null`, `id_
 Sin body. Llama a `fn_aplicar_partida(id, idUsuario)`: pasa el borrador a APLICADA, le asigna el número y guarda quién y cuándo. Responde `{ "numero": "110001" }`. 409 con el mensaje: `La partida no cuadra: debe …, haber … (n líneas)`, `El mes 10/2026 está cerrado o no existe`, `La partida 7 no existe o ya está aplicada`.
 
 ### `POST /api/contabilidad/partidas/{id}/anular`
-Body `{ "motivo": "Registrada por error", "fecha": "2026-11-13" }`. Llama a `fn_anular_partida(id, idUsuario, motivo, fecha)`: crea la partida inversa (mismas cuentas, `debe` y `haber` cambiados, mismo tipo, `origen: ANULACION`, `idPartidaAnula` = la original, `concepto` = `Anulación de la partida PDA 110001: <motivo>`), **ya aplicada** y fechada `fecha`, que debe caer en un mes abierto (puede ser distinto al de la original). La original no cambia. Responde 201 con la partida inversa completa. 409 con el mensaje de la función: `Solo se anulan partidas aplicadas; un borrador se borra`, `La partida 110001 ya es una anulación`, `La partida 110001 ya fue anulada`, `Escriba el motivo de la anulación`, `El mes 10/2026 está cerrado o no existe`. **Una partida se anula una sola vez** y una anulación no se anula (si fue un error, se registra otra partida).
+Body `{ "motivo": "Registrada por error", "fecha": "2026-11-13" }`. `motivo`: obligatorio, **hasta 250** (con el prefijo de 36 caracteres entra en los 300 del `concepto`). Llama a `fn_anular_partida(id, idUsuario, motivo, fecha)`: crea la partida inversa (mismas cuentas, `debe` y `haber` cambiados, mismo tipo, `origen: ANULACION`, `idPartidaAnula` = la original, `concepto` = `Anulación de la partida PDA 110001: <motivo>`), **ya aplicada** y fechada `fecha`, que debe caer en un mes abierto (puede ser distinto al de la original). La original no cambia. Responde 201 con la partida inversa completa. 409 con el mensaje de la función: `Solo se anulan partidas aplicadas; un borrador se borra`, `La partida 110001 ya es una anulación`, `La partida 110001 ya fue anulada`, `Escriba el motivo de la anulación`, `El mes 10/2026 está cerrado o no existe`. **Una partida se anula una sola vez** y una anulación no se anula (si fue un error, se registra otra partida).
 
 Cerrar un mes (`POST /periodos/{anio}/{mes}/cerrar`) cuenta ahora las partidas en BORRADOR reales del mes: `El mes 11/2026 tiene partidas en borrador: aplíquelas o bórrelas antes de cerrarlo`.
 
@@ -998,6 +1005,7 @@ Quién la ve: por ahora **Administrador y Auditor** (borrador de la matriz de ro
 | `VENTAS` · `ANULACIONES` · `HACIENDA` · `CAJA` | `COBRAR` · `ANULAR`, `NOTA_CREDITO` · `ACEPTADO`, `RECHAZADO`, `CONTINGENCIA` · `ABRIR`, `CERRAR` |
 | `AGENDA` · `CLIENTES` · `SERVICIOS` · `EMPLEADOS` | `CREAR`, `EDITAR`, `MOVER`, `CANCELAR`, `DAR_DE_BAJA` |
 | `INVENTARIO` · `COMPRAS` | `CREAR`, `EDITAR`, `AJUSTAR`, `REGISTRAR` |
+| `CONTABILIDAD` | `CREAR`, `EDITAR`, `BORRAR`, `APLICAR`, `ANULAR` (partidas) · `CERRAR_MES`, `REABRIR_MES` · `GENERAR_CIERRE`, `CERRAR_EJERCICIO` |
 | `PLANILLA` · `CONFIGURACION` · `USUARIOS` | `CERRAR_QUINCENA`, `EDITAR`, `CREAR`, `RESTABLECER_CONTRASENA`, `DESACTIVAR` |
 
 ### `GET /api/bitacora/{id}`

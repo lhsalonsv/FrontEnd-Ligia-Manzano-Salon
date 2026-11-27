@@ -5,10 +5,10 @@
 export const ACTIVIDADES_PRUEBA = [
   { codActividad: '10005', descripcion: 'Otros' },
   { codActividad: '46900', descripcion: 'Venta al por mayor de otros productos' },
-  { codActividad: '47722', descripcion: 'Venta al por menor de artículos de perfumería y cosméticos' },
+  { codActividad: '47722', descripcion: 'Venta al por menor de productos cosméticos y de tocador' },
   { codActividad: '56101', descripcion: 'Restaurantes' },
-  { codActividad: '69200', descripcion: 'Actividades de contabilidad, teneduría de libros y auditoría' },
-  { codActividad: '70200', descripcion: 'Actividades de consultoría de gestión' },
+  { codActividad: '69200', descripcion: 'Actividades de contabilidad, teneduría de libros y auditoría; asesoramiento en materia de impuestos' },
+  { codActividad: '70200', descripcion: 'Actividades de consultoría en gestión empresarial' },
   { codActividad: '82300', descripcion: 'Organización de convenciones y ferias de negocios' },
   { codActividad: '96020', descripcion: 'Peluquería y otros tratamientos de belleza' },
 ];

@@ -65,7 +65,7 @@ export function revisarDevolucion(relacionada, detalle, productos) {
     else if (cantidad > comprada.cantidad) campos.agregar = `${nombre}: la compra ${relacionada.numeroCompra} trajo ${comprada.cantidad}, no se pueden devolver ${cantidad}.`;
     else {
       const lote = productos.find((p) => p.idProducto === idProducto).lotes.find((l) => l.idLote === comprada.idLote);
-      if (!conflicto && lote.cantidadDisponible < cantidad) conflicto = `Del lote ${lote.idLote} solo quedan ${lote.cantidadDisponible} unidades: no se pueden devolver ${cantidad}`;
+      if (!conflicto && lote.cantidadDisponible < cantidad) conflicto = `De ${nombre} solo quedan ${lote.cantidadDisponible} unidades del lote de esa compra: no se pueden devolver ${cantidad}`; // = fn_registrar_devolucion_proveedor (v1.9)
     }
   }
   return { campos, conflicto };

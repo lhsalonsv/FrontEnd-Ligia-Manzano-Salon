@@ -19,7 +19,7 @@ test('si el lote ya no tiene las unidades es un conflicto (409) y no se mueve na
   const productos = structuredClone(PRODUCTOS_PRUEBA);
   const { campos, conflicto } = revisarDevolucion(relacionada, [{ idProducto: 1, cantidad: 3 }], productos);
   assert.deepEqual(campos, {});
-  assert.equal(conflicto, 'Del lote 2 solo quedan 2 unidades: no se pueden devolver 3');
+  assert.match(conflicto, /^De .+ solo quedan 2 unidades del lote de esa compra: no se pueden devolver 3$/);
   assert.equal(lote2(productos).cantidadDisponible, 2);
 });
 

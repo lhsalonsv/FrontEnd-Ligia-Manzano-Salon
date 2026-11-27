@@ -308,8 +308,12 @@ async function cargarPeriodos() {
   pintarPeriodos();
 }
 
-/** Corre la acción del servicio y vuelve a pintar con su mensaje (el de la función de la base si la rechaza). */
-async function accionPeriodos(textoOk, accion) {
+/**
+ * Corre la acción del servicio y vuelve a pintar con su mensaje (el de la función de la base si la rechaza).
+ * `borradores` ({ anio, mes? }): si la base la rechaza por partidas en borrador (también cuenta un borrador vacío),
+ * el aviso enlaza a la lista filtrada por esos borradores.
+ */
+async function accionPeriodos(textoOk, accion, borradores = null) {
   estado.confirmar = null;
   estado.confirmarCierre = null;
   try {
@@ -317,7 +321,9 @@ async function accionPeriodos(textoOk, accion) {
     estado.avisoPeriodos = { texto: typeof textoOk === 'function' ? textoOk(r) : textoOk, enlace: r?.enlace };
     await recargarEjercicios();
   } catch (e) {
-    estado.avisoPeriodos = { error: true, texto: e.message };
+    const enlace = borradores && /tiene partidas en borrador/.test(e.message)
+      ? { href: `partidas.html?${new URLSearchParams({ ...borradores, estado: 'BORRADOR' })}`, texto: 'Ver los borradores' } : null;
+    estado.avisoPeriodos = { error: true, texto: e.message, enlace };
   }
   pintarPeriodos();
 }
@@ -483,7 +489,7 @@ if (sesion && !ROLES.includes(sesion.usuario.rol)) {
     if (periodo === 'cancelar') estado.confirmar = null;
     else if (periodo === 'confirmar') {
       const { accion, anio: a, mes: m } = estado.confirmar;
-      accionPeriodos(accion === 'cerrar' ? `${nombreMes(m)} de ${a} cerrado.` : `${nombreMes(m)} de ${a} reabierto.`, () => (accion === 'cerrar' ? cerrarPeriodo(a, m) : reabrirPeriodo(a, m)));
+      accionPeriodos(accion === 'cerrar' ? `${nombreMes(m)} de ${a} cerrado.` : `${nombreMes(m)} de ${a} reabierto.`, () => (accion === 'cerrar' ? cerrarPeriodo(a, m) : reabrirPeriodo(a, m)), { anio: a, mes: m });
       return;
     } else estado.confirmar = { accion: periodo, anio: Number(anio), mes: Number(mes) };
     estado.avisoPeriodos = null;
@@ -495,7 +501,7 @@ if (sesion && !ROLES.includes(sesion.usuario.rol)) {
     const { cierre, anio } = b.dataset;
     if (cierre === 'confirmar') {
       const { accion, anio: a } = estado.confirmarCierre;
-      if (accion === 'generar') accionPeriodos(`Partida de cierre del ejercicio ${a} creada en borrador.`, async () => ({ enlace: { href: `partidas.html?id=${(await generarPartidaCierre(a)).idPartida}`, texto: 'Abrir la partida de cierre' } }));
+      if (accion === 'generar') accionPeriodos(`Partida de cierre del ejercicio ${a} creada en borrador.`, async () => ({ enlace: { href: `partidas.html?id=${(await generarPartidaCierre(a)).idPartida}`, texto: 'Abrir la partida de cierre' } }), { anio: a });
       else accionPeriodos((r) => `Ejercicio ${a} cerrado.${r.enlace ? ' Queda en borrador el traslado a ejercicios anteriores.' : ' No se creó el traslado a ejercicios anteriores: enero del año siguiente no está abierto o falta la cuenta en Configuración.'}`,
         async () => { const { idPartidaTraslado } = await cerrarEjercicio(a); return { enlace: idPartidaTraslado ? { href: `partidas.html?id=${idPartidaTraslado}`, texto: 'Abrir el traslado en borrador' } : null }; });
       return;

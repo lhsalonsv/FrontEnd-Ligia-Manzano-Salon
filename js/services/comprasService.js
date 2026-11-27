@@ -294,7 +294,7 @@ async function fichaProveedorPrueba(idProveedor) {
       gastos: c.lineas.length - deProducto(c).length, tipoDocumentoProveedor: c.tipoDocumentoProveedor,
       total: totales(c).total, fechaVencimientoPago: vence(c),
     })),
-    comprasAnio: { cantidad: anio.length, total: centavos(anio.reduce((s, c) => s + totales(c).total, 0)) },
+    comprasAnio: { cantidad: anio.length, total: centavos(anio.reduce((s, c) => s + signo(c) * totales(c).total, 0)) }, // la NC resta, como en el total del mes
   };
 }
 

@@ -53,7 +53,7 @@ function htmlFolio(grupo, i, cantidad, folio) {
     emisor: conteo.emisor, titulo: `Acta de inventario físico al ${fechaDMY(conteo.fechaCorte)}`, derecha: `Fecha de corte: ${fechaDMY(conteo.fechaCorte)}`, folio,
     grilla: GRILLA, columnas: COLUMNAS, filas: grupo,
     totales: ultima ? ['', '', 'Total general', '', montoHoja(estado.acta.total), ''] : null,
-    pie: ultima ? observaciones + pieFirmas([{ rotulo: 'El sujeto pasivo, su representante o apoderado', nombre: conteo.emisor.nombre }, { rotulo: 'El contador', nombre: estado.contador }]) : '',
+    pie: ultima ? observaciones + pieFirmas([{ rotulo: 'El sujeto pasivo, su representante o apoderado', nombre: conteo.emisor?.nombre }, { rotulo: 'El contador', nombre: estado.contador }]) : '',
   });
 }
 

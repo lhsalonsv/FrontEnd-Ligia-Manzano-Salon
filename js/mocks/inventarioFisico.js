@@ -65,7 +65,7 @@ export function aplicarConteo({ productos, lotes, contadas, fechaCorte, idLoteIn
     const diferencia = contadas.get(p.idProducto) - delSistema.existenciaSistema;
     if (!diferencia) continue;
     if (-diferencia > existencia(actuales)) {
-      throw new RangeError(`Producto ${p.nombreProducto}: faltan ${-diferencia - existencia(actuales)} unidades que ya se vendieron o ajustaron después del corte; revise esos movimientos antes de cerrar`);
+      throw new RangeError(`${p.nombreProducto}: faltan ${-diferencia - existencia(actuales)} unidades que ya se vendieron o ajustaron después del corte; revise esos movimientos antes de cerrar`);
     }
     const r = ajustarLotes(actuales, diferencia, idLote, `${fechaCorte}T23:59:59-06:00`);
     if (diferencia > 0) idLote++;

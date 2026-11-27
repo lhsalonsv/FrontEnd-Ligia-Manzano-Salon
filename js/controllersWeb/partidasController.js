@@ -104,6 +104,11 @@ async function verLista() {
   const anios = ejercicios.map((e) => e.anio).reverse();
   const actual = new Date().getFullYear();
   lista.filtros.anio = String(anios.includes(actual) ? actual : anios[0] ?? actual);
+  // Filtros que llegan en la URL (ej. ?anio=2026&mes=11&estado=BORRADOR desde Parámetros, al no poder cerrar un mes)
+  for (const k of ['anio', 'mes', 'tipo', 'estado']) {
+    const v = params.get(k);
+    if (v && (k !== 'anio' || anios.includes(Number(v)))) lista.filtros[k] = v;
+  }
   const f = lista.filtros;
   const mensaje = { eliminada: 'Borrador eliminado.' }[params.get('aviso')];
   vista.innerHTML = `
@@ -185,7 +190,7 @@ function panelAnular(p, rango) {
     <h2 class="text-lg">Anular la partida ${escapar(p.codigoTipo)} ${escapar(p.numero)}</h2>
     <p class="text-13 text-texto-secundario">Se crea una partida inversa (debe y haber cambiados), ya aplicada y enlazada a esta. La original no se modifica (art. 139 del Código Tributario).</p>
     <div data-error class="aviso aviso-error hidden" role="alert"></div>
-    ${campo({ nombre: 'motivo', columna: 'motivo', etiqueta: 'Motivo', obligatorio: true, control: entrada('motivo', '', 'maxlength="200" autocomplete="off"') })}
+    ${campo({ nombre: 'motivo', columna: 'motivo', etiqueta: 'Motivo', obligatorio: true, control: entrada('motivo', '', 'maxlength="250" autocomplete="off"') })}
     ${campo({ nombre: 'fecha', columna: 'fecha', etiqueta: 'Fecha de la anulación', obligatorio: true, ayuda: `Debe estar en un mes abierto: ${rango.texto}.`, control: entrada('fecha', rango.defecto, `type="date" min="${rango.min}" max="${rango.max}" aria-describedby="ayuda-fecha"`) })}
     <div class="flex flex-wrap gap-2"><button type="submit" class="${BOTON} btn-peligro">Anular partida</button>
       <button type="button" class="${BOTON} btn-secundario" data-accion="panel-cerrar">Cancelar</button></div></form>`;
