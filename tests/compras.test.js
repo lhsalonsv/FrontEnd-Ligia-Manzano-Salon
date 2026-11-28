@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { revisarDevolucion, aplicarDevolucion } from '../js/mocks/compras.js';
+import { revisarDevolucion, aplicarDevolucion, revisarCuentas, ultimaCuenta } from '../js/mocks/compras.js';
 import { armarRegistro } from '../js/mocks/registroInventario.js';
 import { PRODUCTOS_PRUEBA, MARCAS_PRUEBA } from '../js/mocks/inventario.js';
 
@@ -41,4 +41,19 @@ test('la devolución baja el lote relacionado y queda en el kardex como DEVOLUCI
   assert.equal(fila.salidaUnidades, 2);
   assert.deepEqual([fila.tipoDocumento, fila.numeroDocumento, fila.proveedor], ['NC', 'DTE-05-1', 'Aurora']);
   assert.equal(lista[0].movimientos.at(-1).saldoUnidades, 0);
+});
+
+test('la sugerencia es la última cuenta usada con el proveedor (null si nunca se usó una)', () => {
+  const nueva = { lineas: [{ descripcion: 'Luz', codigoCuenta: '51010302' }] };
+  const vieja = { lineas: [{ descripcion: 'Alquiler', codigoCuenta: '5101040101' }] };
+  assert.equal(ultimaCuenta([nueva, vieja]), '51010302');
+  assert.equal(ultimaCuenta([{ lineas: [{ idProducto: 1 }] }, vieja]), '5101040101');
+  assert.equal(ultimaCuenta([{ lineas: [{ idProducto: 1 }] }]), null);
+});
+
+test('cada gasto exige su cuenta y las compras exentas también; los productos no', () => {
+  const detalle = [{ clave: 'g1', descripcion: 'Luz' }, { clave: 'g2', descripcion: 'Agua', codigoCuenta: '51010302' }, { idProducto: 1, clave: 'p' }];
+  assert.deepEqual(revisarCuentas(detalle, 0, null), { 'cuenta-g1': 'Elige la cuenta contable de este gasto.' });
+  assert.deepEqual(Object.keys(revisarCuentas(detalle.slice(1), 10, null)), ['codigoCuentaExentas']);
+  assert.deepEqual(revisarCuentas(detalle.slice(1), 10, '5101040101'), {});
 });

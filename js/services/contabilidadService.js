@@ -10,11 +10,13 @@
  *   GET/PUT  /api/contabilidad/configuracion
  *   GET/POST /api/contabilidad/partidas · GET/PUT/DELETE /api/contabilidad/partidas/{id} · POST /partidas/{id}/aplicar | anular
  *   GET /api/contabilidad/reportes/saldos | mayor | diario
+ *   GET/POST /api/contabilidad/contabilizar/{origen}?desde&hasta · POST /api/contabilidad/impuestos/{anio}/{mes}
  */
 import { DATOS_PRUEBA } from '../config.js';
 import { authFetch, ApiError } from '../utils/authFetch.js';
 import { obtenerSesion } from '../utils/session.js';
 import { NEGOCIO_PRUEBA } from '../mocks/configuracion.js';
+import { resumenF07 } from './librosIvaService.js';
 import { CUENTAS_PRUEBA } from '../mocks/cuentasContables.js';
 import {
   TIPOS_PARTIDA_PRUEBA, CONFIG_PRUEBA, ejerciciosIniciales, validarCuentaNueva, validarEdicionCuenta,
@@ -22,10 +24,11 @@ import {
   guardarTipoPartida, validarConfiguracion, sembrarPartidas, validarPartida, crearBorrador, editarBorrador, eliminarBorrador,
   aplicarPartida as aplicarPartidaPrueba, anularPartida as anularPartidaPrueba, borradoresPorMes, filtrarPartidas, vistaPartida,
   saldosCuentas, mayorCuenta, libroDiario, generarPartidaCierre as generarPartidaCierrePrueba, cerrarEjercicio as cerrarEjercicioPrueba,
+  sembrarPendientes, vistaContabilizar as vistaContabilizarPrueba, contabilizar as contabilizarPrueba, generarImpuestosMes as generarImpuestosMesPrueba,
 } from '../mocks/contabilidad.js';
 
 /** Para las pantallas: qué mes se puede cerrar y cuál reabrir (se calcula sobre lo que devuelve GET /ejercicios). */
-export { mesPorCerrar, mesPorReabrir, mesesAbiertos, mesAbierto, totalesLineas, TIPOS_CUENTA } from '../mocks/contabilidad.js';
+export { mesPorCerrar, mesPorReabrir, mesesAbiertos, mesAbierto, totalesLineas, resumirLineas, TIPOS_CUENTA } from '../mocks/contabilidad.js';
 
 export const TAMANO_PAGINA = 50;
 
@@ -95,6 +98,26 @@ export const obtenerDiario = ({ desde, hasta, tipo = '' }) => (D()
   ? prueba((p) => reglaPrueba(() => ({ emisor: emisorPrueba(), ...libroDiario(p.partidas, p.cuentas, p.tipos, desde, hasta, tipo) })))
   : authFetch(`${BASE}/reportes/diario?${new URLSearchParams({ desde, hasta, tipo })}`));
 
+/**
+ * Contabilizar (fase 3). `origen`: VENTAS, COMPRAS, PLANILLA o TARJETAS.
+ * Vista previa: GET /contabilizar/{origen}?desde&hasta → { lineas: [{ grupo, fecha, tipoDocumento, idDocumento, documento, codigoCuenta, nombreCuenta, falta, monto }] }
+ * (monto: + Debe, − Haber; codigoCuenta null con `falta` = qué falta configurar; `grupo` = una partida).
+ * @param {{desde:string, hasta:string}} rango
+ */
+export const vistaContabilizar = (origen, { desde, hasta }) => (D()
+  ? prueba((p) => reglaPrueba(() => ({ lineas: vistaContabilizarPrueba(p, origen, desde, hasta) })))
+  : authFetch(`${BASE}/contabilizar/${origen}?${new URLSearchParams({ desde, hasta })}`));
+/** Crea los borradores del rango. 409 con el texto de la base si falta una cuenta. @returns {Promise<{ids:number[]}>} */
+export const contabilizar = (origen, { desde, hasta }) => (D()
+  ? prueba((p) => reglaPrueba(() => ({ ids: contabilizarPrueba(p, origen, desde, hasta, usuarioPrueba()) })))
+  : authFetch(`${BASE}/contabilizar/${origen}`, { method: 'POST', cuerpo: { desde, hasta } }));
+/** Borrador de la liquidación de IVA y el pago a cuenta del mes. 409 si el mes ya tiene una vigente. @returns {Promise<{idPartida:number}>} */
+export async function generarImpuestosMes(anio, mes) {
+  if (!D()) return authFetch(`${BASE}/impuestos/${anio}/${mes}`, { method: 'POST' });
+  const resumen = await resumenF07(`${anio}-${String(mes).padStart(2, '0')}`);
+  return prueba((p) => reglaPrueba(() => ({ idPartida: generarImpuestosMesPrueba(p, Number(anio), Number(mes), resumen, usuarioPrueba()) })));
+}
+
 // --- Datos de prueba (guardados en sessionStorage para que las recargas conserven los cambios) -----------------
 
 const esperar = () => new Promise((r) => setTimeout(r, 150));
@@ -109,6 +132,8 @@ function leerPrueba() {
     config: { ...CONFIG_PRUEBA },
   };
   if (!estadoPrueba.partidas) sembrarPartidas(estadoPrueba); // también si lo guardado es de antes de las partidas
+  if (!estadoPrueba.pendientes) sembrarPendientes(estadoPrueba);
+  estadoPrueba.config = { ...CONFIG_PRUEBA, ...estadoPrueba.config }; // campos nuevos de la fase 3 si lo guardado es anterior
   return estadoPrueba;
 }
 

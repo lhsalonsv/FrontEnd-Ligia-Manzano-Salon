@@ -31,6 +31,7 @@ export const DATOS_PRUEBA = {
   registroInventario: true,
   inventarioFisico: true,
   contabilidad: true,
+  liquidaciones: true,
 };
 
 /** Minutos sin uso antes de cerrar la sesión (lo dice la pantalla de login). */

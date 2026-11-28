@@ -18,10 +18,15 @@ export const TIPOS_PARTIDA_PRUEBA = [
   ['PDA', 'Partida de diario', true], ['VTA', 'Partida de ventas', false],
 ].map(([codigo, nombre, predeterminado]) => ({ codigo, nombre, predeterminado, activo: true }));
 
-/** Cuentas especiales vacías hasta que la contadora las confirme. */
+/** Cuentas especiales vacías hasta que la contadora las confirme. Las de las partidas automáticas son las de config_contable_salon.sql. */
 export const CONFIG_PRUEBA = {
   ctaUtilidadEjercicio: null, ctaUtilidadesAnteriores: null, ctaPerdidaEjercicio: null, ctaPerdidasAnteriores: null,
-  ctaPerdidasGanancias: null, ctaReservaLegal: null, ctaClientes: null, ctaProveedores: null,
+  ctaPerdidasGanancias: null, ctaReservaLegal: null, ctaClientes: '11020101', ctaProveedores: '21020101',
+  fechaInicio: '2026-11-01', ctaCaja: '110101', ctaIngresoVentas: '61010107', ctaComprasProductos: null,
+  ctaIvaDebitoCcf: '210701', ctaIvaDebitoCf: '210702', ctaIvaCredito: '110401', ctaIvaPercibido: '11040801', ctaIvaRetenido: '11040802',
+  ctaAnticipoIva: '110409', ctaRemanenteIva: '110407', ctaIvaPorPagar: '211002', ctaPagoCuenta: '11080101', ctaPagoCuentaPorPagar: '211001',
+  ctaSueldos: '51010101', ctaComisiones: '51010102', ctaIsssLaboral: '210601', ctaAfpLaboral: '210602', ctaRentaRetenida: '21060301',
+  ctaOtrosDescuentos: null, ctaSalariosPorPagar: '210301', ctaCapitalSocial: null, ctaGastoIsr: null,
   tipoPartidaVentas: 'ING', tipoPartidaCompras: 'COM', modoVentas: 'DETALLE', modoCompras: 'DETALLE',
 };
 
@@ -138,17 +143,23 @@ export function guardarTipoPartida(tipos, datos, nuevo) {
 // --- Configuración ---------------------------------------------------------------
 
 export const CAMPOS_CUENTA_CONFIG = ['ctaUtilidadEjercicio', 'ctaUtilidadesAnteriores', 'ctaPerdidaEjercicio', 'ctaPerdidasAnteriores',
-  'ctaPerdidasGanancias', 'ctaReservaLegal', 'ctaClientes', 'ctaProveedores'];
+  'ctaPerdidasGanancias', 'ctaReservaLegal', 'ctaClientes', 'ctaProveedores',
+  'ctaCaja', 'ctaIngresoVentas', 'ctaComprasProductos', 'ctaIvaDebitoCcf', 'ctaIvaDebitoCf', 'ctaIvaCredito', 'ctaIvaPercibido', 'ctaIvaRetenido',
+  'ctaAnticipoIva', 'ctaRemanenteIva', 'ctaIvaPorPagar', 'ctaPagoCuenta', 'ctaPagoCuentaPorPagar', 'ctaSueldos', 'ctaComisiones', 'ctaIsssLaboral',
+  'ctaAfpLaboral', 'ctaRentaRetenida', 'ctaOtrosDescuentos', 'ctaSalariosPorPagar', 'ctaCapitalSocial', 'ctaGastoIsr'];
+/** Estas dos se buscan por prefijo (capital 3101, ISR 53): aceptan cuentas agrupadoras. */
+export const CUENTAS_AGRUPADORAS = ['ctaCapitalSocial', 'ctaGastoIsr'];
 
-/** Errores por campo de la configuración: cuentas que existan y acepten movimiento, tipos activos, modos válidos. */
+/** Errores por campo de la configuración: cuentas que existan y acepten movimiento, tipos activos, modos válidos, fecha de inicio. */
 export function validarConfiguracion(config, cuentas, tipos) {
   const e = {};
   for (const campo of CAMPOS_CUENTA_CONFIG) {
-    if (config[campo] === null || config[campo] === '') continue;
+    if (config[campo] === null || config[campo] === undefined || config[campo] === '') continue;
     const c = cuentas.find((x) => x.codigo === config[campo]);
     if (!c) e[campo] = 'No existe esa cuenta.';
-    else if (!c.aceptaMovimiento) e[campo] = `La cuenta ${c.codigo} no acepta movimiento.`;
+    else if (!c.aceptaMovimiento && !CUENTAS_AGRUPADORAS.includes(campo)) e[campo] = `La cuenta ${c.codigo} no acepta movimiento.`;
   }
+  if (config.fechaInicio && !fechaValida(config.fechaInicio)) e.fechaInicio = 'Elija una fecha válida.';
   for (const campo of ['tipoPartidaVentas', 'tipoPartidaCompras']) {
     if (!tipos.some((t) => t.codigo === config[campo] && t.activo)) e[campo] = 'Elija un tipo de partida activo.';
   }
@@ -163,7 +174,7 @@ export function validarConfiguracion(config, cuentas, tipos) {
 // creadoEn, aplicadaPor, aplicadaEn, lineas: [{ linea, codigoCuenta, concepto, debe, haber }] }. `p` = { partidas, ejercicios, cuentas, tipos }.
 // Las funciones lanzan Error con el mensaje de la base (trigger o función); validarPartida devuelve los errores por campo (400).
 
-const fechaValida = (f) => /^\d{4}-\d{2}-\d{2}$/.test(f) && new Date(`${f}T00:00:00Z`).toISOString().slice(0, 10) === f;
+const fechaValida = (f) => /^\d{4}-\d{2}-\d{2}$/.test(f) && !Number.isNaN(Date.parse(`${f}T00:00:00Z`)) && new Date(`${f}T00:00:00Z`).toISOString().slice(0, 10) === f;
 const dos = (n) => n.toFixed(2);
 
 /** Suma del debe y del haber (a centavos) y su diferencia. */
@@ -486,4 +497,129 @@ export function libroDiario(partidas, cuentas, tipos, desde, hasta, tipo = '') {
   const lista = [...porId.values()].map((x) => { const t = totalesLineas(x.lineas); return { ...x, totalDebe: t.debe, totalHaber: t.haber }; });
   const total = totalesLineas(lista.map((x) => ({ debe: x.totalDebe, haber: x.totalHaber })));
   return { partidas: lista, totalDebe: total.debe, totalHaber: total.haber };
+}
+
+// --- Contabilizar (v_contable_pendientes, fn_contabilizar y fn_generar_impuestos_mes de migracion_1.10.sql) ---------------
+// Un documento pendiente del mock: { origen, tipoDocumento, idDocumento, fecha, documento, idPartida, lineas: [{ codigoCuenta, falta, monto }] }.
+// monto: positivo va al Debe, negativo al Haber. codigoCuenta null = falta configurarla y `falta` dice cuál.
+
+export const ORIGENES_CONTABILIZAR = ['VENTAS', 'COMPRAS', 'PLANILLA', 'TARJETAS'];
+
+/** Siembra documentos pendientes en el mes de `hoy`, con líneas que cuadran y una compra con una línea sin cuenta. */
+export function sembrarPendientes(p, hoy = new Date()) {
+  const mes = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
+  const doc = (origen, tipoDocumento, idDocumento, dia, documento, lineas) => ({
+    origen, tipoDocumento, idDocumento, fecha: `${mes}-${String(dia).padStart(2, '0')}`, documento, idPartida: null,
+    lineas: lineas.map(([codigoCuenta, monto, falta = null]) => ({ codigoCuenta, falta, monto })),
+  });
+  p.pendientes = [
+    doc('VENTAS', 'DTE', 101, 4, 'Factura 0101', [['110101', 113], ['61010107', -100], ['210702', -13]]),
+    doc('VENTAS', 'DTE', 102, 4, 'Crédito fiscal 0045', [['110101', 224], ['11040802', 2], ['61010107', -200], ['210701', -26]]),
+    doc('VENTAS', 'DTE', 103, 6, 'Factura 0102', [['110101', 56.5], ['61010107', -50], ['210702', -6.5]]),
+    doc('VENTAS', 'DTE', 104, 6, 'Factura 0103', [['110101', 226], ['61010107', -200], ['210702', -26]]),
+    doc('VENTAS', 'DTE', 105, 11, 'Factura 0104', [['110101', 113], ['61010107', -100], ['210702', -13]]),
+    doc('COMPRAS', 'COMPRA', 170, 8, 'C-0170 CCF 00871', [
+      [null, 40, 'Falta la cuenta contable de la línea "Varios" de la compra C-0170'], ['110401', 5.2], ['21020101', -45.2]]),
+    doc('COMPRAS', 'COMPRA', 171, 12, 'C-0171 CCF 00912', [['510211', 100], ['110401', 13], ['21020101', -113]]),
+    doc('PLANILLA', 'PLANILLA', 8, 14, 'Planilla del 01/11 al 14/11/2026', [
+      ['51010101', 600], ['51010102', 100], ['210601', -21], ['210602', -50.75], ['21060301', -20], ['210301', -608.25]]),
+    doc('TARJETAS', 'LIQUIDACION_TARJETA', 3, 20, 'Liquidación 0003', [['1101030101', 478.7], ['110409', 10], ['21020101', 11.3], ['110101', -500]]),
+  ];
+}
+
+const fechaDMY = (f) => `${f.slice(8)}/${f.slice(5, 7)}/${f.slice(0, 4)}`;
+/** Contabilizado = su partida existe y no fue anulada (borrarla o anularla libera el documento). */
+const contabilizado = (p, d) => d.idPartida != null && p.partidas.some((x) => x.idPartida === d.idPartida) && !p.partidas.some((x) => x.idPartidaAnula === d.idPartida);
+
+/** La vista previa: una fila por línea de cada documento pendiente del rango (desde la fecha de inicio). `grupo` = una partida. */
+export function vistaContabilizar(p, origen, desde, hasta) {
+  if (!ORIGENES_CONTABILIZAR.includes(origen)) throw new Error(`No se contabiliza el origen ${origen}`);
+  return p.pendientes
+    .filter((d) => d.origen === origen && d.fecha >= desde && d.fecha <= hasta && d.fecha >= (p.config.fechaInicio ?? '') && !contabilizado(p, d))
+    .sort((a, b) => a.fecha.localeCompare(b.fecha) || a.idDocumento - b.idDocumento)
+    .flatMap((d) => d.lineas.map((l) => ({
+      grupo: origen === 'VENTAS' || origen === 'COMPRAS' ? d.fecha : `${d.tipoDocumento}:${d.idDocumento}`, fecha: d.fecha,
+      tipoDocumento: d.tipoDocumento, idDocumento: d.idDocumento, documento: d.documento, codigoCuenta: l.codigoCuenta,
+      nombreCuenta: p.cuentas.find((c) => c.codigo === l.codigoCuenta)?.nombre ?? null, falta: l.falta, monto: l.monto,
+    })));
+}
+
+/** Suma por cuenta (modo RESUMEN) de las líneas de una partida: [{ codigoCuenta, nombreCuenta, debe, haber }], sin las que se compensan. */
+export function resumirLineas(lineas) {
+  const porCuenta = new Map();
+  for (const l of lineas) {
+    const x = porCuenta.get(l.codigoCuenta) ?? { codigoCuenta: l.codigoCuenta, nombreCuenta: l.nombreCuenta, monto: 0 };
+    x.monto = centavos(x.monto + l.monto);
+    porCuenta.set(l.codigoCuenta, x);
+  }
+  // Mismo orden que fn_contabilizar: primero el Debe, luego el Haber, cada lado por código
+  return [...porCuenta.values()].filter((x) => x.monto !== 0)
+    .sort((a, b) => (a.monto < 0) - (b.monto < 0) || (a.codigoCuenta < b.codigoCuenta ? -1 : 1))
+    .map(({ monto, ...x }) => ({ ...x, debe: Math.max(monto, 0), haber: Math.max(-monto, 0) }));
+}
+
+/**
+ * fn_contabilizar: crea un borrador por grupo (un día en ventas y compras; un documento en planilla y tarjetas), con las líneas sumadas
+ * por cuenta, y enlaza los documentos. Si falta una cuenta no crea nada y dice cuál. Devuelve los ids de las partidas.
+ */
+export function contabilizar(p, origen, desde, hasta, usuario, ahora = new Date().toISOString()) {
+  if (!p.config.fechaInicio) throw new Error('Configure en Contabilidad > Parámetros la fecha de inicio de la contabilidad');
+  const lineas = vistaContabilizar(p, origen, desde, hasta);
+  const falta = lineas.find((l) => l.falta);
+  if (falta) throw new Error(falta.falta);
+  const codigoTipo = origen === 'VENTAS' ? p.config.tipoPartidaVentas : origen === 'COMPRAS' ? p.config.tipoPartidaCompras : 'PDA';
+  const creadas = [];
+  try {
+    for (const grupo of [...new Set(lineas.map((l) => l.grupo))]) {
+      const delGrupo = lineas.filter((l) => l.grupo === grupo);
+      const docs = [...new Set(delGrupo.map((l) => `${l.tipoDocumento}:${l.idDocumento}`))];
+      const { fecha, documento } = delGrupo[0];
+      const concepto = origen === 'VENTAS' || origen === 'COMPRAS'
+        ? `${origen === 'VENTAS' ? 'Ventas' : 'Compras'} del ${fechaDMY(fecha)} (${docs.length} ${docs.length === 1 ? 'documento' : 'documentos'})` : documento;
+      const sumadas = resumirLineas(delGrupo);
+      if (!sumadas.length) continue; // todo se compensa: no hay partida y los documentos siguen pendientes
+      const partida = crearBorrador(p, { fecha, codigoTipo, concepto, lineas: sumadas }, usuario, ahora);
+      partida.origen = origen;
+      creadas.push({ partida, docs });
+    }
+  } catch (e) {
+    p.partidas = p.partidas.filter((x) => !creadas.some((c) => c.partida === x)); // la base lo hace en una transacción
+    throw e;
+  }
+  for (const { partida, docs } of creadas) {
+    for (const d of p.pendientes) if (d.origen === origen && docs.includes(`${d.tipoDocumento}:${d.idDocumento}`)) d.idPartida = partida.idPartida;
+  }
+  return creadas.map((c) => c.partida.idPartida);
+}
+
+const CUENTAS_IMPUESTOS = ['ctaIvaDebitoCcf', 'ctaIvaDebitoCf', 'ctaIvaCredito', 'ctaIvaPercibido', 'ctaIvaRetenido', 'ctaAnticipoIva',
+  'ctaRemanenteIva', 'ctaIvaPorPagar', 'ctaPagoCuenta', 'ctaPagoCuentaPorPagar'];
+
+/** fn_generar_impuestos_mes: liquidación de IVA y pago a cuenta del mes, en borrador al último día. `r` = el resumen del F-07. Devuelve el id. */
+export function generarImpuestosMes(p, anio, mes, r, usuario, ahora = new Date().toISOString()) {
+  const c = p.config;
+  if (p.partidas.some((x) => x.origen === 'LIQUIDACION_IVA' && x.anio === anio && x.mes === mes && !p.partidas.some((a) => a.idPartidaAnula === x.idPartida))) {
+    throw new Error(`El mes ${mes}/${anio} ya tiene su partida de impuestos (bórrela si está en borrador, o anúlela)`);
+  }
+  if (CUENTAS_IMPUESTOS.some((k) => !c[k])) throw new Error('Configure en Contabilidad > Parámetros las cuentas del IVA y del pago a cuenta');
+  const neto = centavos(r.debitoCcf + r.debitoCf - r.creditoFiscal - r.ivaPercibido - r.ivaRetenido - r.anticipoIva - r.remanenteAnterior);
+  const fecha = new Date(Date.UTC(anio, mes, 0)).toISOString().slice(0, 10);
+  const mmaaaa = `${String(mes).padStart(2, '0')}/${anio}`;
+  const lineas = [
+    [c.ctaIvaDebitoCcf, 'Débito fiscal de créditos fiscales', r.debitoCcf],
+    [c.ctaIvaDebitoCf, 'Débito fiscal de facturas', r.debitoCf],
+    [c.ctaIvaCredito, 'Crédito fiscal', -r.creditoFiscal],
+    [c.ctaIvaPercibido, 'IVA percibido (casilla 163)', -r.ivaPercibido],
+    [c.ctaIvaRetenido, 'IVA retenido (casilla 162)', -r.ivaRetenido],
+    [c.ctaAnticipoIva, 'Anticipo a cuenta 2 % (casilla 161)', -r.anticipoIva],
+    [c.ctaRemanenteIva, 'Remanente del mes anterior (casilla 164)', -r.remanenteAnterior],
+    [neto > 0 ? c.ctaIvaPorPagar : c.ctaRemanenteIva, neto > 0 ? 'IVA por pagar' : 'Remanente para el mes siguiente', -neto],
+    [c.ctaPagoCuenta, `Pago a cuenta del ${mmaaaa}`, r.pagoACuenta],
+    [c.ctaPagoCuentaPorPagar, 'Pago a cuenta por pagar', -r.pagoACuenta],
+  ].filter(([, , monto]) => centavos(monto) !== 0)
+    .map(([codigoCuenta, concepto, monto]) => ({ codigoCuenta, concepto, debe: Math.max(centavos(monto), 0), haber: Math.max(centavos(-monto), 0) }));
+  if (!lineas.length) throw new Error(`El mes ${mes}/${anio} no tiene IVA ni ingresos que liquidar`);
+  const partida = crearBorrador(p, { fecha, codigoTipo: 'PDA', concepto: `Liquidación de IVA y pago a cuenta de ${mmaaaa}`, lineas }, usuario, ahora);
+  partida.origen = 'LIQUIDACION_IVA';
+  return partida.idPartida;
 }

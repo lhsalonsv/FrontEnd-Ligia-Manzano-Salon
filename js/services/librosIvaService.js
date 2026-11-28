@@ -21,6 +21,26 @@ export async function obtenerLibros(periodo) {
   return authFetch(`/libros-iva?periodo=${encodeURIComponent(periodo)}`);
 }
 
+/**
+ * Resumen del F-07 del mes (fn_resumen_iva): GET /libros-iva/{periodo}/resumen-f07
+ * → { debitoCcf, debitoCf, creditoFiscal, ivaPercibido, ivaRetenido, anticipoIva, remanenteAnterior, ingresosBrutos, pagoACuenta }
+ * @param {string} periodo 'AAAA-MM'
+ */
+export async function resumenF07(periodo) {
+  if (!DATOS_PRUEBA.librosIva) return authFetch(`/libros-iva/${encodeURIComponent(periodo)}/resumen-f07`);
+  const { ventasContribuyentes: vc, consumidorFinal: cf, compras } = await librosPrueba(periodo);
+  const suma = (filas, f) => centavos(filas.reduce((s, x) => s + f(x), 0));
+  const ingresosBrutos = centavos(
+    suma(vc, (x) => x.signo * (x.ventasExentas + x.ventasNoSujetas + x.ventasGravadas))
+    + suma(cf, (x) => x.ventasExentas + x.ventasNoSujetas + x.ventasGravadas - x.ivaIncluido));
+  return {
+    debitoCcf: suma(vc, (x) => x.signo * x.debitoFiscal), debitoCf: suma(cf, (x) => x.ivaIncluido),
+    creditoFiscal: suma(compras, (x) => x.signo * x.creditoFiscal), ivaPercibido: suma(compras, (x) => x.signo * x.ivaPercibido),
+    ivaRetenido: suma(vc, (x) => x.signo * (x.ivaRetenido ?? 0)), anticipoIva: 0, remanenteAnterior: 0,
+    ingresosBrutos, pagoACuenta: centavos(ingresosBrutos * 0.0175), // PAGO_A_CUENTA_PCT = 1.75
+  };
+}
+
 // --- Datos de prueba ---------------------------------------------------------
 // Repiten las reglas de las vistas SQL para que la pantalla se vea igual que con la API.
 // Las vistas son las que valen; prueba_1.3.sql revisa sus líneas contra el manual de Hacienda.

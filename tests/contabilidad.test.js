@@ -414,3 +414,115 @@ test('estado de resultados: el impuesto sobre la renta (53) sale de los gastos y
 function hacerImpuesto(p) {
   aplicarPartida(p, crearBorrador(p, { fecha: '2099-02-25', codigoTipo: 'PDA', concepto: 'Impuesto', lineas: [{ codigoCuenta: '530101', debe: 10 }, { codigoCuenta: '110101', haber: 10 }] }, 'Ana').idPartida, 'Ana');
 }
+
+// --- Contabilizar y partidas de impuestos (fase 3) -----------------------------------
+
+import { sembrarPendientes, vistaContabilizar, contabilizar, generarImpuestosMes, resumirLineas } from '../js/mocks/contabilidad.js';
+
+const estadoContabilizar = () => {
+  const p = { cuentas: cuentas(), ejercicios: ejerciciosIniciales(), tipos: TIPOS_PARTIDA_PRUEBA.map((t) => ({ ...t })), config: { ...CONFIG_PRUEBA } };
+  sembrarPartidas(p);
+  sembrarPendientes(p, new Date(2026, 10, 27));
+  return p;
+};
+const RANGO = ['2026-11-01', '2026-11-30'];
+
+test('configuración: la fecha de inicio es válida y capital e ISR aceptan agrupadoras, las demás no', () => {
+  const lista = cuentas();
+  assert.deepEqual(validarConfiguracion({ ...CONFIG_PRUEBA, ctaCapitalSocial: '3101', ctaGastoIsr: '53' }, lista, TIPOS_PARTIDA_PRUEBA), {});
+  assert.match(validarConfiguracion({ ...CONFIG_PRUEBA, ctaCaja: '1101' }, lista, TIPOS_PARTIDA_PRUEBA).ctaCaja, /no acepta movimiento/);
+  assert.ok(validarConfiguracion({ ...CONFIG_PRUEBA, fechaInicio: '2026-13-40' }, lista, TIPOS_PARTIDA_PRUEBA).fechaInicio);
+});
+
+test('contabilizar ventas: un borrador por día, las líneas sumadas por cuenta y todos cuadran', () => {
+  const p = estadoContabilizar();
+  const antes = p.partidas.length;
+  const vista = vistaContabilizar(p, 'VENTAS', ...RANGO);
+  assert.deepEqual([...new Set(vista.map((l) => l.grupo))], ['2026-11-04', '2026-11-06', '2026-11-11']);
+  const ids = contabilizar(p, 'VENTAS', ...RANGO, 'Prueba');
+  assert.equal(ids.length, 3);
+  assert.equal(p.partidas.length, antes + 3);
+  for (const id of ids) {
+    const x = p.partidas.find((y) => y.idPartida === id);
+    const t = totalesLineas(x.lineas);
+    assert.equal(x.estado, 'BORRADOR');
+    assert.equal(x.origen, 'VENTAS');
+    assert.equal(t.diferencia, 0);
+    assert.ok(t.debe > 0);
+    assert.equal(new Set(x.lineas.map((l) => l.codigoCuenta)).size, x.lineas.length); // una línea por cuenta
+  }
+  const dia4 = p.partidas.find((y) => y.idPartida === ids[0]);
+  assert.equal(dia4.lineas.find((l) => l.codigoCuenta === '110101').debe, 337);
+  assert.equal(dia4.lineas.find((l) => l.codigoCuenta === '61010107').haber, 300);
+});
+
+test('un documento no se contabiliza dos veces, y borrar el borrador lo libera', () => {
+  const p = estadoContabilizar();
+  const ids = contabilizar(p, 'VENTAS', ...RANGO, 'Prueba');
+  assert.deepEqual(vistaContabilizar(p, 'VENTAS', ...RANGO), []);
+  assert.deepEqual(contabilizar(p, 'VENTAS', ...RANGO, 'Prueba'), []);
+  eliminarBorrador(p, ids[0]);
+  assert.deepEqual([...new Set(vistaContabilizar(p, 'VENTAS', ...RANGO).map((l) => l.grupo))], ['2026-11-04']);
+});
+
+test('planilla y tarjetas: una partida por documento, de tipo PDA y cuadrada', () => {
+  const p = estadoContabilizar();
+  for (const origen of ['PLANILLA', 'TARJETAS']) {
+    const [id] = contabilizar(p, origen, ...RANGO, 'Prueba');
+    const x = p.partidas.find((y) => y.idPartida === id);
+    assert.equal(x.codigoTipo, 'PDA');
+    assert.equal(totalesLineas(x.lineas).diferencia, 0);
+  }
+});
+
+test('una línea sin cuenta bloquea las compras con el texto de lo que falta y no crea nada', () => {
+  const p = estadoContabilizar();
+  const antes = p.partidas.length;
+  assert.ok(vistaContabilizar(p, 'COMPRAS', ...RANGO).some((l) => l.codigoCuenta === null && /"Varios" de la compra C-0170/.test(l.falta)));
+  assert.throws(() => contabilizar(p, 'COMPRAS', ...RANGO, 'Prueba'), /Falta la cuenta contable de la línea "Varios" de la compra C-0170/);
+  assert.equal(p.partidas.length, antes);
+  // Un rango que no incluye esa compra sí se contabiliza
+  assert.equal(contabilizar(p, 'COMPRAS', '2026-11-10', '2026-11-30', 'Prueba').length, 1);
+});
+
+test('contabilizar respeta la fecha de inicio y la exige', () => {
+  const p = estadoContabilizar();
+  p.config.fechaInicio = '2026-11-06';
+  assert.deepEqual([...new Set(vistaContabilizar(p, 'VENTAS', ...RANGO).map((l) => l.grupo))], ['2026-11-06', '2026-11-11']);
+  p.config.fechaInicio = null;
+  assert.throws(() => contabilizar(p, 'VENTAS', ...RANGO, 'Prueba'), /fecha de inicio/);
+  assert.throws(() => vistaContabilizar(p, 'OTRO', ...RANGO), /No se contabiliza el origen OTRO/);
+});
+
+test('resumirLineas suma por cuenta y quita lo que se compensa', () => {
+  const l = (codigoCuenta, monto) => ({ codigoCuenta, nombreCuenta: codigoCuenta, monto });
+  assert.deepEqual(resumirLineas([l('A', 10.1), l('B', -10.1), l('A', 0.2), l('C', 5), l('C', -5)]),
+    [{ codigoCuenta: 'A', nombreCuenta: 'A', debe: 10.3, haber: 0 }, { codigoCuenta: 'B', nombreCuenta: 'B', debe: 0, haber: 10.1 }]);
+});
+
+test('impuestos del mes: IVA por pagar y pago a cuenta cuadran, y solo una vigente por mes', () => {
+  const p = estadoContabilizar();
+  const r = { debitoCcf: 26, debitoCf: 78, creditoFiscal: 18.2, ivaPercibido: 0, ivaRetenido: 2, anticipoIva: 10, remanenteAnterior: 0, ingresosBrutos: 800, pagoACuenta: 14 };
+  const id = generarImpuestosMes(p, 2026, 11, r, 'Prueba');
+  const x = p.partidas.find((y) => y.idPartida === id);
+  assert.equal(x.fecha, '2026-11-30');
+  assert.equal(x.estado, 'BORRADOR');
+  assert.equal(totalesLineas(x.lineas).diferencia, 0);
+  assert.equal(x.lineas.find((l) => l.codigoCuenta === '211002').haber, 73.8); // 26 + 78 − 18.2 − 2 − 10
+  assert.equal(x.lineas.find((l) => l.codigoCuenta === '11080101').debe, 14);
+  assert.throws(() => generarImpuestosMes(p, 2026, 11, r, 'Prueba'), /El mes 11\/2026 ya tiene su partida de impuestos/);
+  eliminarBorrador(p, id); // borrarla libera el mes
+  assert.ok(generarImpuestosMes(p, 2026, 11, r, 'Prueba'));
+});
+
+test('impuestos del mes: con más crédito que débito queda remanente, y sin cuentas o sin movimiento se detiene', () => {
+  const p = estadoContabilizar();
+  const cero = { debitoCcf: 0, debitoCf: 0, creditoFiscal: 0, ivaPercibido: 0, ivaRetenido: 0, anticipoIva: 0, remanenteAnterior: 0, ingresosBrutos: 0, pagoACuenta: 0 };
+  assert.throws(() => generarImpuestosMes(p, 2026, 11, cero, 'Prueba'), /no tiene IVA ni ingresos que liquidar/);
+  const id = generarImpuestosMes(p, 2026, 11, { ...cero, debitoCf: 13, creditoFiscal: 30 }, 'Prueba');
+  const x = p.partidas.find((y) => y.idPartida === id);
+  assert.equal(totalesLineas(x.lineas).diferencia, 0);
+  assert.equal(x.lineas.find((l) => l.codigoCuenta === '110407').debe, 17); // remanente para el mes siguiente
+  p.config.ctaPagoCuenta = null;
+  assert.throws(() => generarImpuestosMes(p, 2026, 12, cero, 'Prueba'), /Configure en Contabilidad > Parámetros las cuentas del IVA/);
+});

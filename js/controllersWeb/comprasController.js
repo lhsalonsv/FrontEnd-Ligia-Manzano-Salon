@@ -15,8 +15,10 @@ import { crearPanel, htmlCabecera, htmlError, htmlExito } from '../utils/panel.j
 import { listarProductos, obtenerProducto } from '../services/inventarioService.js';
 import {
   listarProveedores, obtenerProveedor, guardarProveedor, cambiarActivoProveedor, listarCompras, obtenerCompra, registrarCompra,
-  mesDe, RENTA_PRODUCTOS, RENTA_GASTOS,
+  mesDe, RENTA_PRODUCTOS, RENTA_GASTOS, ultimaCuentaProveedor,
 } from '../services/comprasService.js';
+import { listarCuentas } from '../services/contabilidadService.js';
+import { revisarCuentas } from '../mocks/compras.js';
 
 const sesion = montarLayout({ accion: { id: 'btn-registrar', texto: 'Registrar compra', icono: 'mas' } });
 
@@ -37,8 +39,10 @@ const estado = {
   seleccion: null, // { tipo: 'compra' | 'proveedor', id }
   sucio: false,
   lineas: [], // registrar: { producto (ficha de inventario), cantidad, costo } — cantidad y costo como texto del input
-  gastos: [], // registrar: { clave: 'g1', descripcion, monto } — sin producto: no tocan el inventario
+  gastos: [], // registrar: { clave: 'g1', descripcion, monto, codigoCuenta, cuentaTocada } — sin producto: no tocan el inventario
   siguienteGasto: 1,
+  cuentas: [], // registrar: las cuentas activas que aceptan movimiento, por código
+  cuentaProveedor: null, // la última cuenta usada con el proveedor elegido
   rentaTocada: false, // si la usuaria cambió la clasificación para renta, ya no se propone sola
   comprasProveedor: [], // para elegir la compra que corrige una nota
   relacionada: null, // NC: la compra que corrige (con su detalle): de ahí salen los productos que se pueden devolver
@@ -228,7 +232,7 @@ async function mostrarCompra(idCompra, aviso = '') {
         </li>` : `
         <li class="grid grid-cols-[1fr_auto] gap-x-3 border-b border-neutro-100 py-2 tabular-nums">
           <b class="min-w-0 font-semibold" data-campo="descripcion">${escapar(d.descripcion)}</b><b class="text-right font-semibold">${dinero(d.subtotal)}</b>
-          <small class="text-13 text-texto-secundario">${nota ? 'concepto de la nota' : 'gasto del local'}</small>
+          <small class="text-13 text-texto-secundario">${nota ? 'concepto de la nota' : 'gasto del local'}${d.codigoCuenta ? ` · <span data-campo="codigo_cuenta">${escapar(d.codigoCuenta)}</span>` : ''}</small>
         </li>`);
   panelEl.innerHTML = `
     ${htmlCabecera(`Compra ${c.numeroCompra}`, `${escapar(c.nombreProveedor)} · ${fechaLarga(c.fechaCompra)}`, {
@@ -250,7 +254,7 @@ async function mostrarCompra(idCompra, aviso = '') {
       </ul>
       <ul class="mt-2 tabular-nums">
         ${fila(c.comprasExentas ? 'Gravado' : 'Subtotal', dinero(c.subtotalSinIva), 'text-texto-secundario')}
-        ${c.comprasExentas ? fila('Exento o no sujeto', dinero(c.comprasExentas), 'text-texto-secundario') : ''}
+        ${c.comprasExentas ? fila(`Exento o no sujeto${c.codigoCuentaExentas ? ` · <span data-campo="codigo_cuenta_exentas">${escapar(c.codigoCuentaExentas)}</span>` : ''}`, dinero(c.comprasExentas), 'text-texto-secundario') : ''}
         ${conIva(c.tipoDocumentoProveedor) ? fila(`IVA ${estado.ivaPct} % (crédito fiscal)`, dinero(c.iva), 'text-texto-secundario') : ''}
         ${c.ivaPercibido ? fila(`Percepción ${PERCEPCION_PCT} % (anticipo de IVA)`, dinero(c.ivaPercibido), 'text-texto-secundario') : ''}
         ${fila(c.tipoDocumentoProveedor === 'NC' ? 'Total que resta' : 'Total', dinero(c.total), 'text-base font-semibold')}
@@ -567,14 +571,24 @@ const gastosListos = () => estado.gastos
   .map((g) => ({ ...g, m: comoNumero(g.monto) }))
   .filter((g) => g.descripcion.trim() && montoValido(g.m) && g.m > 0);
 
-function htmlGasto({ clave, descripcion, monto }) {
+/** <option>s de las cuentas con movimiento: primero las de costo y gasto, luego las demás (un mueble va al activo). */
+function opcionesCuenta(actual) {
+  const una = (c) => `<option value="${c.codigo}" ${c.codigo === actual ? 'selected' : ''}>${escapar(c.codigo)} · ${escapar(c.nombre)}</option>`;
+  const gastos = estado.cuentas.filter((c) => c.tipo === 'COSTO_GASTO');
+  const otras = estado.cuentas.filter((c) => c.tipo !== 'COSTO_GASTO');
+  return `<option value="">Elegir…</option><optgroup label="Costos y gastos">${gastos.map(una).join('')}</optgroup><optgroup label="Otras cuentas">${otras.map(una).join('')}</optgroup>`;
+}
+
+function htmlGasto({ clave, descripcion, monto, codigoCuenta }) {
   return `<li class="fila-gasto" data-gasto="${clave}">
     <label class="block min-w-0"><span class="mb-1 block text-13 text-texto-secundario md:sr-only">Descripción</span>
       <div class="campo-caja h-10 min-h-0"><input name="descripcion-${clave}" id="f-descripcion-${clave}" value="${escapar(descripcion)}" maxlength="200" autocomplete="off" placeholder="Ej.: Energía eléctrica del local" aria-label="Qué se pagó"></div></label>
     <label class="block"><span class="mb-1 block text-13 text-texto-secundario md:sr-only">Monto sin IVA</span>
       <div class="campo-caja h-10 min-h-0"><span class="text-texto-secundario">$</span><input name="monto-${clave}" id="f-monto-${clave}" value="${escapar(monto)}" type="number" inputmode="decimal" min="0.01" step="0.01" class="text-right tabular-nums" aria-label="Monto sin IVA"></div></label>
     <button type="button" class="mt-1 grid size-8 cursor-pointer place-items-center self-end rounded-chico text-texto-secundario hover:bg-fondo-sutil md:self-start" data-accion="quitar-gasto" data-id="${clave}" aria-label="Quitar este gasto">${icono('cerrar', 'size-[18px]')}</button>
-    <div class="col-span-full hidden has-[.campo-error:not(.hidden)]:block"><p class="campo-error mt-0 hidden" id="error-descripcion-${clave}"></p><p class="campo-error mt-0 hidden" id="error-monto-${clave}"></p></div>
+    <label class="col-span-full block min-w-0"><span class="mb-1 block text-13 text-texto-secundario">Cuenta contable</span>
+      <div class="campo-caja h-10 min-h-0" data-campo="codigo_cuenta"><select name="cuenta-${clave}" id="f-cuenta-${clave}" aria-label="Cuenta contable">${opcionesCuenta(codigoCuenta)}</select></div></label>
+    <div class="col-span-full hidden has-[.campo-error:not(.hidden)]:block"><p class="campo-error mt-0 hidden" id="error-cuenta-${clave}"></p><p class="campo-error mt-0 hidden" id="error-descripcion-${clave}"></p><p class="campo-error mt-0 hidden" id="error-monto-${clave}"></p></div>
   </li>`;
 }
 
@@ -587,10 +601,22 @@ function pintarGastos() {
 
 function agregarGasto() {
   const clave = `g${estado.siguienteGasto++}`;
-  estado.gastos.push({ clave, descripcion: '', monto: '' });
+  estado.gastos.push({ clave, descripcion: '', monto: '', codigoCuenta: estado.cuentaProveedor, cuentaTocada: false });
   estado.sucio = true;
   pintarGastos();
   $(`f-descripcion-${clave}`).focus();
+}
+
+/** Al elegir proveedor: propone la última cuenta que se usó con él en los gastos que la persona no ha tocado. */
+async function proponerCuentas(idProveedor) {
+  estado.cuentaProveedor = null;
+  if (idProveedor) estado.cuentaProveedor = (await ultimaCuentaProveedor(idProveedor).catch(() => null))?.codigoCuenta ?? null;
+  if (Number($('form-compra').elements.idProveedor.value) !== Number(idProveedor || 0)) return; // eligió otro mientras tanto
+  for (const g of estado.gastos.filter((x) => !x.cuentaTocada)) {
+    g.codigoCuenta = estado.cuentaProveedor;
+    const select = $(`f-cuenta-${g.clave}`);
+    if (select) select.value = g.codigoCuenta ?? '';
+  }
 }
 
 // --- Clasificación para renta (anexo de compras) ----------------------------
@@ -645,6 +671,7 @@ function pintarResumen() {
   const nota = esNota(tipo);
   const unidades = tipo === 'ND' ? 0 : lineasListas().reduce((s, l) => s + l.n, 0);
   const { subtotalSinIva, comprasExentas, iva, ivaPercibido, total } = totalesFormulario();
+  $('form-compra').querySelector('[data-campo="codigo_cuenta_exentas"]').hidden = !(comprasExentas > 0);
   const fila = (etiqueta, valor, clase = 'text-texto-secundario') => `<li class="flex justify-between gap-3 py-1 ${clase}"><span>${etiqueta}</span><span>${valor}</span></li>`;
   const cuenta = [];
   if (tipo !== 'ND' && (estado.lineas.length || !estado.gastos.length)) cuenta.push(`${plural(estado.lineas.length, 'producto', 'productos')} · ${plural(unidades, 'unidad', 'unidades')}`);
@@ -845,6 +872,8 @@ async function abrirRegistrar({ idProveedor = null, idProductos = [] } = {}) {
   estado.lineas = [];
   estado.gastos = [];
   estado.siguienteGasto = 1;
+  estado.cuentaProveedor = null;
+  estado.cuentas = (await listarCuentas().catch(() => [])).filter((c) => c.activa && c.aceptaMovimiento).sort((a, b) => a.codigo.localeCompare(b.codigo));
   estado.rentaTocada = false;
   estado.rentaRelacionada = null;
   estado.relacionada = null;
@@ -886,6 +915,7 @@ async function abrirRegistrar({ idProveedor = null, idProductos = [] } = {}) {
             </div>
             ${campo({ nombre: 'periodoIva', columna: 'periodo_iva', etiqueta: 'Mes del crédito fiscal', obligatorio: true, ayuda: 'El del documento o hasta 3 meses después.', control: '<select id="f-periodoIva" name="periodoIva" aria-describedby="ayuda-periodoIva"></select>' })}
             ${campo({ nombre: 'comprasExentas', columna: 'compras_exentas', etiqueta: 'Exento o no sujeto', control: `<span class="text-texto-secundario">$</span>${entrada('comprasExentas', '', 'type="number" inputmode="decimal" min="0" step="0.01" class="text-right tabular-nums" placeholder="0.00" aria-describedby="ayuda-comprasExentas"')}`, ayuda: 'Solo si el documento trae montos sin IVA.' })}
+            ${campo({ nombre: 'codigoCuentaExentas', columna: 'codigo_cuenta_exentas', etiqueta: 'Cuenta de las compras exentas', obligatorio: true, control: `<select id="f-codigoCuentaExentas" name="codigoCuentaExentas">${opcionesCuenta(null)}</select>` })}
             <div class="sm:col-span-2" data-campo="iva_percibido">
               <label class="flex items-start gap-2 text-sm"><input type="checkbox" name="percepcion" class="mt-0.5 size-4 accent-neutro-900"> <span>El proveedor cobró percepción de IVA del ${PERCEPCION_PCT} % <span class="text-texto-secundario">(lo cobran los grandes contribuyentes en compras de $100 o más)</span></span></label>
             </div>
@@ -959,6 +989,7 @@ async function abrirRegistrar({ idProveedor = null, idProductos = [] } = {}) {
   pintarLineas();
   pintarGastos();
   pintarDocumento();
+  if (idProveedor) proponerCuentas(idProveedor).catch(() => {});
   $('titulo-registrar').focus();
   for (const id of idProductos) await agregarLinea(id, { enfocar: false });
   estado.sucio = false; // lo que llegó por la URL o el aviso no cuenta como cambio
@@ -1048,12 +1079,13 @@ function leerCompra(form) {
     idCompraRelacionada: nota ? Number(v('idCompraRelacionada')) || null : null,
     periodoIva: conIva(tipo) ? v('periodoIva') : mesDe(v('fechaCompra') || fechaIso()),
     comprasExentas: exentas ?? 0,
+    codigoCuentaExentas: exentas > 0 ? v('codigoCuentaExentas') || null : null,
     percepcion: conIva(tipo) && form.elements.percepcion.checked,
     ...leerRenta(),
     detalle: [
       // Una nota de débito no lleva productos: aunque haya quedado alguno en la lista, no se manda
       ...(tipo === 'ND' ? [] : estado.lineas.map((l) => ({ idProducto: l.producto.idProducto, cantidad: comoNumero(l.cantidad), costoUnitario: comoNumero(l.costo) }))),
-      ...estado.gastos.map((g) => ({ clave: g.clave, descripcion: g.descripcion.trim().replace(/\s+/g, ' '), cantidad: 1, costoUnitario: comoNumero(g.monto) })),
+      ...estado.gastos.map((g) => ({ clave: g.clave, descripcion: g.descripcion.trim().replace(/\s+/g, ' '), codigoCuenta: g.codigoCuenta || null, cantidad: 1, costoUnitario: comoNumero(g.monto) })),
     ],
   };
   const errores = {};
@@ -1085,6 +1117,9 @@ function leerCompra(form) {
       if (!montoValido(d.costoUnitario) || !d.costoUnitario) errores[`monto-${d.clave}`] = 'Escriba el monto sin IVA (hasta 2 decimales).';
     }
   }
+  // ponytail: si no se pudieron cargar las cuentas (recepción no ve el catálogo: trae números de banco), no se exige;
+  // la contabilización avisa la línea sin cuenta. Falta decidir quién completa la cuenta en ese caso.
+  if (estado.cuentas.length) Object.assign(errores, revisarCuentas(datos.detalle, datos.comprasExentas, datos.codigoCuentaExentas));
   datos.detalle = datos.detalle.map(({ clave, ...d }) => d);
   return { datos, errores };
 }
@@ -1143,6 +1178,11 @@ function eventosRegistrar() {
     if ((campoLinea === 'descripcion' || campoLinea === 'monto') && id) {
       estado.gastos.find((g) => g.clave === id)[campoLinea] = e.target.value;
     }
+    if (campoLinea === 'cuenta' && id) {
+      const gasto = estado.gastos.find((g) => g.clave === id);
+      gasto.codigoCuenta = e.target.value;
+      gasto.cuentaTocada = true;
+    }
     if (['clasificacionRenta', 'tipoCostoGasto', 'tipoOperacionRenta', 'sectorRenta'].includes(nombre)) {
       estado.rentaTocada = true;
       // Al pasar de costo a gasto cambian los tipos que se pueden elegir
@@ -1153,6 +1193,7 @@ function eventosRegistrar() {
       if (nombre === 'idProveedor' || nombre === 'tipoDocumentoProveedor') {
         estado.rentaRelacionada = null;
         estado.relacionada = null;
+        if (nombre === 'idProveedor') proponerCuentas(e.target.value).catch(() => {});
         if (estado.modoLineas === 'devolucion' && estado.lineas.length) { estado.lineas = []; pintarLineas(); }
       }
       pintarDocumento();

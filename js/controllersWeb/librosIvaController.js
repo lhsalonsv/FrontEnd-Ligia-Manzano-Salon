@@ -11,7 +11,8 @@ import { icono } from '../utils/icons.js';
 import { escapar, dinero, numero, fechaCorta, fechaIso, mesAnio } from '../utils/formato.js';
 import { centavos } from '../utils/calculos.js';
 import { crearXlsx, descargar } from '../utils/xlsx.js';
-import { obtenerLibros } from '../services/librosIvaService.js';
+import { obtenerLibros, resumenF07 } from '../services/librosIvaService.js';
+import { generarImpuestosMes } from '../services/contabilidadService.js';
 
 const sesion = montarLayout();
 const $ = (id) => document.getElementById(id);
@@ -131,6 +132,55 @@ function pintarResumen(d) {
     : `${numero(d.pendientes.sinSello)} documentos del mes están en contingencia: ya salen en el libro, pero hay que transmitirlos`} a Hacienda antes de declarar.</p>`;
 }
 
+// --- Casillas del F-07 y partida de impuestos del mes --------------------------
+
+/** Lo que la contadora copia al F-07 (fn_resumen_iva) y el botón que arma la partida de IVA y pago a cuenta del mes. */
+async function pintarF07(id, mensaje = '') {
+  const caja = $('f07');
+  let r;
+  try {
+    r = await resumenF07(estado.periodo);
+  } catch {
+    caja.classList.add('hidden'); // el resto de la pantalla sirve igual
+    return;
+  }
+  if (id !== estado.peticion) return;
+  const aPagar = centavos(r.debitoCcf + r.debitoCf - r.creditoFiscal - r.ivaPercibido - r.ivaRetenido - r.anticipoIva - r.remanenteAnterior);
+  const fila = (casilla, texto, monto) => `<li class="flex justify-between gap-3 border-b border-neutro-100 py-1.5 tabular-nums">
+      <span>${casilla ? `<b class="mr-2 font-mono text-13 text-texto-secundario">${casilla}</b>` : ''}${texto}</span><span>${dinero(monto)}</span></li>`;
+  const puede = ['ADMINISTRADOR', 'CONTADOR'].includes(sesion.usuario.rol);
+  caja.innerHTML = `
+    <div class="flex flex-wrap items-baseline justify-between gap-2">
+      <h3 class="font-semibold">Para el F-07 de ${tituloMes(estado.periodo)}</h3>
+      ${puede ? '<button type="button" id="generar-impuestos" class="btn btn-secundario h-9 px-3 text-sm">Generar partida de impuestos</button>' : ''}
+    </div>
+    <ul class="mt-2 text-15">
+      ${fila('161', 'Anticipo a cuenta del 2 % (tarjetas)', r.anticipoIva)}
+      ${fila('162', 'Retención del 1 % que hicieron los clientes', r.ivaRetenido)}
+      ${fila('163', 'Percepción del 1 % que cobraron los proveedores', r.ivaPercibido)}
+      ${fila('164', 'Remanente del mes anterior', r.remanenteAnterior)}
+      ${fila('', aPagar >= 0 ? 'IVA a pagar' : 'Remanente para el mes siguiente', Math.abs(aPagar))}
+      ${fila('', `Pago a cuenta (1.75 % de ${dinero(r.ingresosBrutos)} de ingresos)`, r.pagoACuenta)}
+    </ul>
+    <p id="f07-mensaje" class="mt-2 text-13 text-texto-secundario">${mensaje || 'La partida de impuestos queda en borrador en Contabilidad para que la revises y la apliques.'}</p>`;
+  caja.classList.remove('hidden');
+  $('generar-impuestos')?.addEventListener('click', generarImpuestos);
+}
+
+async function generarImpuestos(e) {
+  const boton = e.currentTarget;
+  const [anio, mes] = estado.periodo.split('-').map(Number);
+  boton.disabled = true;
+  try {
+    await generarImpuestosMes(anio, mes);
+    const enlace = `partidas.html?${new URLSearchParams({ anio, mes, estado: 'BORRADOR' })}`;
+    $('f07-mensaje').innerHTML = `Partida de impuestos creada en borrador. <a class="font-semibold text-texto-principal underline" href="${enlace}">Verla en Contabilidad</a>`;
+  } catch (error) {
+    $('f07-mensaje').innerHTML = `<span class="text-estado-error">${escapar(error.message)}</span>`;
+    boton.disabled = false;
+  }
+}
+
 // --- Lista del libro elegido -------------------------------------------------
 
 const celdas = (valores) => valores.map((v, i) => {
@@ -179,10 +229,12 @@ async function cargar() {
     pintarResumen(datos);
     pintarPestanas();
     pintarLibro();
+    pintarF07(id);
   } catch (error) {
     if (id !== estado.peticion) return;
     estado.datos = null;
     $('resumen').innerHTML = '';
+    $('f07').classList.add('hidden');
     $('lista').innerHTML = '';
     $('totales').classList.add('hidden');
     $('lista-estado').classList.remove('hidden');

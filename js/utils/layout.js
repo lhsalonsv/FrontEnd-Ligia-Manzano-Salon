@@ -29,6 +29,7 @@ const MENU = [
     { id: 'servicios', texto: 'Servicios', href: 'servicios.html', listo: true },
     { id: 'inventario', texto: 'Inventario', href: 'inventario.html', listo: true },
     { id: 'compras', texto: 'Compras', href: 'compras.html', listo: true },
+    { id: 'liquidaciones', icono: 'tarjeta', texto: 'Liquidaciones de tarjeta', href: 'liquidaciones-tarjeta.html', listo: true, roles: ['ADMINISTRADOR', 'CONTADOR', 'AUDITOR'] },
   ],
   [
     { id: 'empleados', texto: 'Empleados', href: 'empleados.html', listo: true },
@@ -58,9 +59,9 @@ function enlaceMenu(item, paginaActual, rol) {
   if (item.roles && !item.roles.includes(rol)) return '';
   const actual = item.id === paginaActual;
   if (!item.listo) {
-    return `<span class="nav-enlace" aria-disabled="true" title="En construcción">${icono(item.id)}${item.texto}</span>`;
+    return `<span class="nav-enlace" aria-disabled="true" title="En construcción">${icono(item.icono ?? item.id)}${item.texto}</span>`;
   }
-  return `<a class="nav-enlace" href="${item.href}" ${actual ? 'aria-current="page"' : ''}>${icono(item.id)}${item.texto}</a>`;
+  return `<a class="nav-enlace" href="${item.href}" ${actual ? 'aria-current="page"' : ''}>${icono(item.icono ?? item.id)}${item.texto}</a>`;
 }
 
 function htmlLateral(paginaActual, rol) {

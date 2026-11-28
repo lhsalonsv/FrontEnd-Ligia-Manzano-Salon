@@ -518,8 +518,9 @@ Una línea es un **producto** (crea un lote PEPS y una entrada en el kardex `ENT
   "tipoOperacionRenta": 1, "clasificacionRenta": 1, "sectorRenta": 4, "tipoCostoGasto": 5,
   "detalle": [
     { "idProducto": 1, "cantidad": 12, "costoUnitario": 7.00 },
-    { "descripcion": "Bolsas para clientas", "cantidad": 1, "costoUnitario": 12.00 }
-  ]
+    { "descripcion": "Bolsas para clientas", "codigoCuenta": "51010201", "cantidad": 1, "costoUnitario": 12.00 }
+  ],
+  "codigoCuentaExentas": null
 }
 ```
 
@@ -539,6 +540,15 @@ Una línea es un **producto** (crea un lote PEPS y una entrada en el kardex `ENT
 | `detalle` | | al menos 1 línea. Producto: `idProducto` activo, no se repite. Gasto: `descripcion` (hasta 200) sin `idProducto`. **`ND`: solo líneas sin producto.** **`NC`: puede llevar líneas con producto = unidades devueltas** (ver "Nota de crédito con devolución"); una `NC` sin líneas de producto es una rebaja de precio y no mueve unidades |
 | `cantidad` | | entero de 1 a 9999 (un gasto lleva 1). En una línea de producto de una `NC`, además `≤` lo que trajo la compra relacionada y `≤` lo que queda de su lote |
 | `costoUnitario` | | sin IVA, ≥ 0, hasta 4 decimales (en una `FACTURA` u `OTRO`, el costo que se pagó) |
+| `detalle[].codigoCuenta` | `tb_detalle_compras.codigo_cuenta` | migración 1.10. **Obligatorio en cada línea sin producto** (400 con `campos.detalle`): la cuenta contable del gasto, que elige quien registra. Cualquier cuenta activa que acepte movimiento (casi siempre 5xxx; un mueble va al activo). En una línea de producto va nulo: se usa `cta_compras_productos` |
+| `codigoCuentaExentas` | `codigo_cuenta_exentas` | migración 1.10. Obligatorio si `comprasExentas > 0`; si no, `null` |
+
+**Si quien registra no puede ver el catálogo** (recepción: `GET /api/contabilidad/cuentas` da 403 porque trae números de cuenta bancaria), la pantalla manda las líneas de gasto sin `codigoCuenta`. Pendiente de decidir con el equipo quién la completa; mientras tanto la API las acepta sin cuenta solo para ese rol y `fn_contabilizar` avisa la línea que falta.
+
+**Al anular una compra** la API pone `anulada_en = now()`: con esa fecha sale su reversión contable (migración 1.10).
+
+### `GET /api/proveedores/{id}/ultima-cuenta`
+La cuenta para proponer en las líneas de gasto: la última `tb_detalle_compras.codigo_cuenta` no nula de ese proveedor, por `fecha_compra` desc. → `{ "codigoCuenta": "51010302" }` o `{ "codigoCuenta": null }`. Mismos roles que Compras.
 
 Lo calcula la API (igual que `totalesCompra` en `js/utils/calculos.js`):
 
@@ -758,8 +768,10 @@ Un solo registro (`tb_config_contable`):
 ```
 Las cuentas arrancan en `null` hasta que la contadora las confirme. En el PUT, cada cuenta debe existir y aceptar movimiento; los tipos de partida deben estar activos; `modo*` es `DETALLE` o `RESUMEN` (400 con `campos` si no).
 
+**Campos de la fase 3 (migración 1.10)**, en el mismo objeto: `fechaInicio` (fecha, no se contabiliza nada anterior), `ctaCaja`, `ctaIngresoVentas`, `ctaComprasProductos`, `ctaIvaDebitoCcf`, `ctaIvaDebitoCf`, `ctaIvaCredito`, `ctaIvaPercibido`, `ctaIvaRetenido`, `ctaAnticipoIva`, `ctaRemanenteIva`, `ctaIvaPorPagar`, `ctaPagoCuenta`, `ctaPagoCuentaPorPagar`, `ctaSueldos`, `ctaComisiones`, `ctaIsssLaboral`, `ctaAfpLaboral`, `ctaRentaRetenida`, `ctaOtrosDescuentos`, `ctaSalariosPorPagar`, `ctaCapitalSocial` y `ctaGastoIsr`. Las columnas son las mismas en snake_case (`cta_caja`…). **`ctaCapitalSocial` y `ctaGastoIsr` aceptan agrupadoras** (3101 y 53); las demás, solo cuentas con movimiento. `config_contable_salon.sql` ya llenó las que confirmó el auditor.
+
 ### Contabilidad: cierre del ejercicio (migración 1.8)
-Roles: **Administrador y Contador**; el Auditor no (403). Orden: 1) la contadora aplica sus ajustes de diciembre (depreciación, provisiones, impuesto sobre la renta, reserva legal; el sistema no los calcula); 2) `partida-cierre`; 3) se cierran los 12 meses; 4) `cerrar`. Fuentes: Código de Comercio arts. 435-446, 123 y 295.
+Roles: **Administrador y Contador**; el Auditor no (403). Orden: 1) la contadora aplica sus ajustes de diciembre (depreciación, provisiones, impuesto sobre la renta; el sistema no los calcula). **La reserva legal sí** (migración 1.10): `partida-cierre` agrega el 7 % de la utilidad antes del ISR, hasta la quinta parte del capital social, si están configuradas `ctaReservaLegal` y `ctaCapitalSocial`; 2) `partida-cierre`; 3) se cierran los 12 meses; 4) `cerrar`. Fuentes: Código de Comercio arts. 435-446, 123 y 295.
 
 #### `POST /api/contabilidad/ejercicios/{anio}/partida-cierre`
 Sin body. Llama a `fn_generar_partida_cierre(anio, usuario)`: crea en **BORRADOR**, al 31 de diciembre, tipo `PDA`, origen `CIERRE`, la partida que deja en cero cada cuenta de resultado (ingresos, costos y gastos) contra Pérdidas y Ganancias y lleva el resultado a la utilidad (haber) o pérdida (debe) del ejercicio. Responde 201 con la partida (formato de `GET /partidas/{id}`); la contadora la revisa y la aplica con `POST /partidas/{id}/aplicar`. 409 con el mensaje de la función:
@@ -863,6 +875,59 @@ Filas de `v_libro_diario` entre las fechas, **agrupadas por partida** y ordenada
 `totalDebe` y `totalHaber` de la respuesta son los del rango y deben ser iguales. En la pantalla y en Excel el debe se llama **Cargo** y el haber **Abono**.
 
 El Libro diario y el Libro mayor son libros legales (art. 139 del Código Tributario): se imprimen foliados y con la firma del contador; el frontend recuerda el folio y el contador en el navegador. Las firmas de los estados financieros (Representante legal, Contador y Auditor) están por confirmar con el Código de Comercio.
+
+## Contabilidad: contabilizar (vistas `v_contable_lineas` y `v_contable_pendientes`, `fn_contabilizar`, `fn_resumen_iva`, `fn_generar_impuestos_mes`, migración 1.10)
+
+Todo se genera en **BORRADOR**; la contadora lo revisa en Partidas, lo completa si hace falta (cuota patronal, ISR) y lo aplica con `POST /partidas/{id}/aplicar`. Pantallas: `contabilizar.html`, `liquidaciones-tarjeta.html` y el cuadro "Para el F-07" de `libros-iva.html`. Diseño: `modelo/PLAN_CONTABILIDAD.md` §5.
+
+### `GET /api/contabilidad/contabilizar/{origen}?desde=2026-11-01&hasta=2026-11-30`
+`origen`: `VENTAS`, `COMPRAS`, `PLANILLA` o `TARJETAS`. La vista previa: `select * from v_contable_pendientes where origen = ? and fecha between ? and ?`, con el nombre de la cuenta.
+```json
+{ "lineas": [
+  { "grupo": "2026-11-04", "fecha": "2026-11-04", "tipoDocumento": "DTE", "idDocumento": 101, "documento": "DTE-01-M001P001-000000000000101",
+    "codigoCuenta": "110101", "nombreCuenta": "Caja General", "falta": null, "monto": 113.00 },
+  { "grupo": "2026-11-08", "fecha": "2026-11-08", "tipoDocumento": "COMPRA", "idDocumento": 170, "documento": "C-0170 CCF 00871",
+    "codigoCuenta": null, "nombreCuenta": null, "falta": "Falta la cuenta contable de la línea \"Varios\" de la compra C-0170", "monto": 40.00 }
+] }
+```
+- `monto`: positivo va al Debe, negativo al Haber. `grupo` = una partida (un día en ventas y compras; un documento en planilla y tarjetas).
+- `codigoCuenta: null` con `falta`: qué hay que configurar o completar; la pantalla bloquea "Generar borradores".
+- Roles: Administrador, Contador y Auditor.
+
+### `POST /api/contabilidad/contabilizar/{origen}`
+Cuerpo `{ "desde": "2026-11-01", "hasta": "2026-11-30" }` → `select fn_contabilizar(origen, desde, hasta, usuario)` → **200** `{ "ids": [41, 42, 43] }` (vacío si no había nada). 409 `REGLA_DE_LA_BASE` con el texto de la base si falta una cuenta o la fecha de inicio, o si el mes está cerrado. Bitácora: módulo `CONTABILIDAD`, acción `CONTABILIZAR` (origen, rango, ids). Roles: Administrador y Contador.
+
+**Descontabilizar** no tiene endpoint propio: es `DELETE /api/contabilidad/partidas/{id}` del borrador (el cascade de `tb_partida_documentos` libera sus documentos). Anular una partida aplicada también los libera.
+
+### `POST /api/contabilidad/impuestos/{anio}/{mes}`
+`select fn_generar_impuestos_mes(anio, mes, usuario)` → **201** `{ "idPartida": 44 }`: el borrador al último día del mes con la liquidación de IVA (a pagar o remanente nuevo) y el pago a cuenta. 409 si el mes ya tiene una vigente o si faltan las cuentas del IVA. Bitácora: `CONTABILIDAD` · `GENERAR_IMPUESTOS`. Roles: Administrador y Contador.
+
+### `GET /api/libros-iva/{periodo}/resumen-f07`
+`periodo` = `2026-11`. `select * from fn_resumen_iva(anio, mes)`:
+```json
+{ "debitoCcf": 24.70, "debitoCf": 321.31, "creditoFiscal": 15.65, "ivaPercibido": 0.00, "ivaRetenido": 0.00,
+  "anticipoIva": 0.00, "remanenteAnterior": 0.00, "ingresosBrutos": 2660.69, "pagoACuenta": 46.56 }
+```
+Casillas del F-07: 161 = `anticipoIva`, 162 = `ivaRetenido`, 163 = `ivaPercibido`, 164 = `remanenteAnterior`. Sale de los libros (vistas `v_anexo_*`), no de los saldos. Roles: los de Libros de IVA.
+
+### `GET /api/liquidaciones-tarjeta?desde=2026-11-01&hasta=2026-11-30`
+`tb_liquidaciones_tarjeta` (el DTE 09 del banco):
+```json
+{ "contenido": [
+  { "idLiquidacion": 1, "fecha": "2026-11-03", "idProveedor": 8, "nombreProveedor": "Banco de Ejemplo", "numeroDocumento": "LIQ-2026-000118",
+    "codigoGeneracion": "a1b2c3d4-0000-4000-8000-000000000118", "periodoIva": "2026-11-01", "montoLiquidado": 842.50, "anticipoIva": 14.91,
+    "comisionTotal": 13.56, "montoDepositado": 814.03, "codigoCuentaBanco": "1101030101", "nombreCuentaBanco": "Banco Agrícola Cta. Cte. #…",
+    "idCompraComision": null, "contabilizada": true }
+] }
+```
+`contabilizada` = `fn_contabilizado('LIQUIDACION_TARJETA', id)`. Roles: Administrador, Contador y Auditor (solo lee).
+
+### `POST /api/liquidaciones-tarjeta` · `PUT /api/liquidaciones-tarjeta/{id}` · `DELETE /api/liquidaciones-tarjeta/{id}`
+Cuerpo: `fecha`, `idProveedor`, `numeroDocumento`, `codigoGeneracion` (uuid u omitido), `periodoIva` (`AAAA-MM-01`), `montoLiquidado` (> 0), `anticipoIva`, `comisionTotal`, `montoDepositado` (≥ 0, 2 decimales), `codigoCuentaBanco` (cuenta con movimiento), `idCompraComision` (opcional). La pantalla propone el anticipo = 2 % de lo cobrado sin IVA y calcula el depositado.
+- 201 / 200 con el objeto de la lista; DELETE → 204.
+- 400 con `campos` (mismas claves) si falta algo.
+- 409 `REGLA_DE_LA_BASE` si `montoDepositado ≠ montoLiquidado − anticipoIva − comisionTotal` (check de la tabla) o si ya está contabilizada (trigger: "La liquidación LIQ-… ya está contabilizada: borre el borrador o anule la partida primero").
+- Bitácora: módulo `COMPRAS`, acciones `CREAR`, `EDITAR`, `BORRAR`. Roles: Administrador y Contador.
 
 ## Configuración (`tb_emisores`, `tb_parametros`, `tb_horarios`, `tb_formas_pago`, `tb_usuarios`)
 
@@ -1005,7 +1070,7 @@ Quién la ve: por ahora **Administrador y Auditor** (borrador de la matriz de ro
 | `VENTAS` · `ANULACIONES` · `HACIENDA` · `CAJA` | `COBRAR` · `ANULAR`, `NOTA_CREDITO` · `ACEPTADO`, `RECHAZADO`, `CONTINGENCIA` · `ABRIR`, `CERRAR` |
 | `AGENDA` · `CLIENTES` · `SERVICIOS` · `EMPLEADOS` | `CREAR`, `EDITAR`, `MOVER`, `CANCELAR`, `DAR_DE_BAJA` |
 | `INVENTARIO` · `COMPRAS` | `CREAR`, `EDITAR`, `AJUSTAR`, `REGISTRAR` |
-| `CONTABILIDAD` | `CREAR`, `EDITAR`, `BORRAR`, `APLICAR`, `ANULAR` (partidas) · `CERRAR_MES`, `REABRIR_MES` · `GENERAR_CIERRE`, `CERRAR_EJERCICIO` |
+| `CONTABILIDAD` | `CREAR`, `EDITAR`, `BORRAR`, `APLICAR`, `ANULAR` (partidas) · `CERRAR_MES`, `REABRIR_MES` · `GENERAR_CIERRE`, `CERRAR_EJERCICIO` · `CONTABILIZAR`, `GENERAR_IMPUESTOS` (migración 1.10) |
 | `PLANILLA` · `CONFIGURACION` · `USUARIOS` | `CERRAR_QUINCENA`, `EDITAR`, `CREAR`, `RESTABLECER_CONTRASENA`, `DESACTIVAR` |
 
 ### `GET /api/bitacora/{id}`

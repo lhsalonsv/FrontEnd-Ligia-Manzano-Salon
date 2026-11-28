@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contabilidad · Contabilizar · Ligia Manzano Salón</title>
+  <link rel="icon" type="image/svg+xml" href="img/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&family=Source+Code+Pro:wght@400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<!-- Sin diseño aprobado todavía: vista previa de las partidas automáticas. Fuente: modelo/migracion_1.10.sql (v_contable_pendientes, fn_contabilizar). -->
+<body data-pagina="contabilidad" data-titulo="Contabilidad">
+
+  <div class="lg:grid lg:min-h-dvh lg:grid-cols-[248px_1fr]">
+    <aside id="lateral" class="fixed inset-y-0 left-0 z-40 flex w-[248px] -translate-x-full flex-col gap-6 overflow-y-auto bg-lateral-fondo px-4 py-6 text-lateral-texto transition-transform lg:sticky lg:top-0 lg:h-dvh lg:translate-x-0"></aside>
+    <div id="fondo-menu" class="fixed inset-0 z-30 hidden bg-neutro-900/50 lg:hidden"></div>
+
+    <div class="flex min-w-0 flex-col">
+      <header id="barra" class="sticky top-0 z-20 flex h-16 items-center gap-4 border-b border-borde-default bg-fondo-superficie px-4 sm:px-8"></header>
+
+      <main id="principal" class="flex-1">
+        <section class="mx-auto flex w-full max-w-6xl min-w-0 flex-col gap-4 p-4 sm:px-8 sm:py-6" aria-label="Contabilizar">
+          <nav class="flex gap-2" aria-label="Contabilidad">
+            <a href="partidas.html" class="btn btn-secundario h-9 px-3 text-sm">Partidas</a>
+            <a href="contabilizar.html" class="btn btn-primario h-9 px-3 text-sm" aria-current="page">Contabilizar</a>
+            <a href="reportes-contables.html" class="btn btn-secundario h-9 px-3 text-sm">Reportes</a>
+            <a href="contabilidad-parametros.html" class="btn btn-secundario h-9 px-3 text-sm">Parámetros</a>
+          </nav>
+          <div id="vista" class="flex min-w-0 flex-col gap-4" aria-live="polite"></div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script type="module" src="js/controllersWeb/contabilizarController.js"></script>
+</body>
+</html>

@@ -376,6 +376,42 @@ const CUENTAS_CONFIG = [
   ['ctaClientes', 'cta_clientes', 'Clientes (por cobrar, por defecto)'],
   ['ctaProveedores', 'cta_proveedores', 'Proveedores (por pagar, por defecto)'],
 ];
+// Partidas automáticas (fase 3): [nombre, columna, etiqueta, ayuda]. Las dos últimas aceptan cuentas agrupadoras (3101, 53).
+const GRUPOS_CONFIG = [
+  ['Ventas y compras', [
+    ['ctaCaja', 'cta_caja', 'Caja (toda venta al contado)'],
+    ['ctaIngresoVentas', 'cta_ingreso_ventas', 'Ingresos por ventas'],
+    ['ctaComprasProductos', 'cta_compras_productos', 'Compras de productos'],
+  ]],
+  ['IVA', [
+    ['ctaIvaDebitoCcf', 'cta_iva_debito_ccf', 'IVA débito de créditos fiscales'],
+    ['ctaIvaDebitoCf', 'cta_iva_debito_cf', 'IVA débito de facturas'],
+    ['ctaIvaCredito', 'cta_iva_credito', 'IVA crédito fiscal'],
+    ['ctaIvaPercibido', 'cta_iva_percibido', 'IVA percibido (1 %)'],
+    ['ctaIvaRetenido', 'cta_iva_retenido', 'IVA retenido (1 %)'],
+    ['ctaAnticipoIva', 'cta_anticipo_iva', 'Anticipo de IVA (2 %)'],
+    ['ctaRemanenteIva', 'cta_remanente_iva', 'Remanente de IVA'],
+    ['ctaIvaPorPagar', 'cta_iva_por_pagar', 'IVA por pagar'],
+  ]],
+  ['Pago a cuenta', [
+    ['ctaPagoCuenta', 'cta_pago_cuenta', 'Pago a cuenta (lo pagado por adelantado)'],
+    ['ctaPagoCuentaPorPagar', 'cta_pago_cuenta_por_pagar', 'Pago a cuenta por pagar'],
+  ]],
+  ['Planilla', [
+    ['ctaSueldos', 'cta_sueldos', 'Sueldos'],
+    ['ctaComisiones', 'cta_comisiones', 'Comisiones'],
+    ['ctaIsssLaboral', 'cta_isss_laboral', 'ISSS laboral'],
+    ['ctaAfpLaboral', 'cta_afp_laboral', 'AFP laboral'],
+    ['ctaRentaRetenida', 'cta_renta_retenida', 'Renta retenida'],
+    ['ctaOtrosDescuentos', 'cta_otros_descuentos', 'Otros descuentos'],
+    ['ctaSalariosPorPagar', 'cta_salarios_por_pagar', 'Salarios por pagar'],
+  ]],
+  ['Cierre y reserva legal', [
+    ['ctaCapitalSocial', 'cta_capital_social', 'Capital social', 'Puede ser la cuenta agrupadora (3101).'],
+    ['ctaGastoIsr', 'cta_gasto_isr', 'Gasto por impuesto sobre la renta', 'Puede ser la cuenta agrupadora (53).'],
+  ]],
+];
+const CUENTAS_FASE3 = GRUPOS_CONFIG.flatMap(([, campos]) => campos);
 const MODOS = [['DETALLE', 'Detalle'], ['RESUMEN', 'Resumen']];
 
 function pintarConfig(mensaje) {
@@ -384,6 +420,8 @@ function pintarConfig(mensaje) {
   // Las 8 listas llevan las mismas ~450 cuentas: se arma el HTML una vez y el valor se pone después
   const cuentas = `<option value="">Sin elegir</option>${estado.cuentas.filter((x) => x.aceptaMovimiento).map((x) => `<option value="${x.codigo}">${x.codigo} — ${escapar(x.nombre)}</option>`).join('')}`;
   const tipos = (valor) => estado.tipos.filter((t) => t.activo || t.codigo === valor).map((t) => [t.codigo, `${t.codigo} — ${t.nombre}`]);
+  const conAgrupadoras = `<option value="">Sin elegir</option>${estado.cuentas.map((x) => `<option value="${x.codigo}">${x.codigo} — ${escapar(x.nombre)}</option>`).join('')}`;
+  const AGRUPADORAS = ['ctaCapitalSocial', 'ctaGastoIsr'];
   const pendientes = CUENTAS_CONFIG.some(([n]) => !c[n]);
   $('pestana-config').innerHTML = `<form id="form-config" class="flex max-w-3xl flex-col gap-4" novalidate>
     <div data-error class="aviso aviso-error hidden" role="alert"></div>
@@ -393,6 +431,14 @@ function pintarConfig(mensaje) {
       <h2 class="text-lg">Cuentas especiales</h2><p class="-mt-3 text-13 text-texto-secundario">Solo cuentas que aceptan movimiento.</p>
       ${CUENTAS_CONFIG.map(([n, col, et]) => campo({ nombre: n, columna: col, etiqueta: et, control: `<select id="f-${n}" name="${n}">${cuentas}</select>` })).join('')}
     </fieldset>
+    <fieldset class="tarjeta flex flex-col gap-4 rounded-grande p-4 sm:p-5" ${lectura}><legend class="sr-only">Inicio de la contabilidad</legend>
+      <h2 class="text-lg">Inicio</h2>
+      ${campo({ nombre: 'fechaInicio', columna: 'fecha_inicio', etiqueta: 'Fecha de inicio de la contabilidad', ayuda: 'No se contabiliza nada anterior a esta fecha. Sin ella no se pueden generar partidas automáticas.', control: entrada('fechaInicio', c.fechaInicio, 'type="date"') })}
+    </fieldset>
+    ${GRUPOS_CONFIG.map(([titulo, campos]) => `<fieldset class="tarjeta flex flex-col gap-4 rounded-grande p-4 sm:p-5" ${lectura}><legend class="sr-only">${titulo}</legend>
+      <h2 class="text-lg">${titulo}</h2>
+      ${campos.map(([n, col, et, ayuda]) => campo({ nombre: n, columna: col, etiqueta: et, ayuda, control: `<select id="f-${n}" name="${n}">${AGRUPADORAS.includes(n) ? conAgrupadoras : cuentas}</select>` })).join('')}
+    </fieldset>`).join('')}
     <fieldset class="tarjeta flex flex-col gap-4 rounded-grande p-4 sm:p-5" ${lectura}><legend class="sr-only">Partidas automáticas</legend>
       <h2 class="text-lg">Partidas automáticas</h2>
       <div class="grid gap-4 sm:grid-cols-2">
@@ -404,7 +450,7 @@ function pintarConfig(mensaje) {
     </fieldset>
     ${puedeEditar ? '<div><button type="submit" class="btn btn-primario">Guardar</button></div>' : ''}
   </form>`;
-  for (const [n] of CUENTAS_CONFIG) $('f-' + n).value = c[n] ?? '';
+  for (const [n] of [...CUENTAS_CONFIG, ...CUENTAS_FASE3]) $('f-' + n).value = c[n] ?? '';
 }
 
 async function enviarConfig(form) {
@@ -413,7 +459,8 @@ async function enviarConfig(form) {
   error.classList.add('hidden');
   mostrarErrores(form, {});
   const datos = {};
-  for (const [n] of CUENTAS_CONFIG) datos[n] = form.elements[n].value || null;
+  for (const [n] of [...CUENTAS_CONFIG, ...CUENTAS_FASE3]) datos[n] = form.elements[n].value || null;
+  datos.fechaInicio = form.elements.fechaInicio.value || null;
   for (const n of ['tipoPartidaVentas', 'modoVentas', 'tipoPartidaCompras', 'modoCompras']) datos[n] = form.elements[n].value;
   boton.disabled = true;
   boton.textContent = 'Guardando…';

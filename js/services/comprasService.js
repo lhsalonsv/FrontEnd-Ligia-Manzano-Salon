@@ -12,14 +12,15 @@
  *   POST  /api/compras                     { idProveedor, fechaCompra, tipoDocumentoProveedor, numeroDocumentoProveedor,
  *                                            claseDocumento, codigoGeneracionProveedor, idCompraRelacionada, periodoIva,
  *                                            comprasExentas, percepcion, tipoOperacionRenta, clasificacionRenta, sectorRenta,
- *                                            tipoCostoGasto, detalle: [{ idProducto, cantidad, costoUnitario } | { descripcion, cantidad, costoUnitario }] }
+ *                                            tipoCostoGasto, codigoCuentaExentas, detalle: [{ idProducto, cantidad, costoUnitario } | { descripcion, cantidad, costoUnitario, codigoCuenta }] }
+ *   GET   /api/proveedores/{id}/ultima-cuenta → { codigoCuenta } (null si no hay)
  */
 import { DATOS_PRUEBA } from '../config.js';
 import { authFetch, ApiError } from '../utils/authFetch.js';
 import { obtenerSesion } from '../utils/session.js';
 import { totalesCompra, centavos, DOCUMENTOS_CON_IVA } from '../utils/calculos.js';
 import { fechaIso } from '../utils/formato.js';
-import { PROVEEDORES_PRUEBA, PROVEEDOR_POR_MARCA, revisarDevolucion, aplicarDevolucion } from '../mocks/compras.js';
+import { PROVEEDORES_PRUEBA, PROVEEDOR_POR_MARCA, revisarDevolucion, aplicarDevolucion, ultimaCuenta, revisarCuentas } from '../mocks/compras.js';
 import { PRODUCTOS_PRUEBA, PARAMETROS_INVENTARIO_PRUEBA } from '../mocks/inventario.js';
 
 export const TAMANO_PAGINA = 50;
@@ -44,6 +45,12 @@ export async function guardarProveedor(datos, idProveedor = null) {
 export async function cambiarActivoProveedor(idProveedor, activo) {
   if (DATOS_PRUEBA.compras) return activoPrueba(idProveedor, activo);
   return authFetch(`/proveedores/${idProveedor}/activo`, { method: 'PATCH', cuerpo: { activo } });
+}
+
+/** La última cuenta contable que se usó en un gasto con este proveedor, para proponerla. @returns {Promise<{codigoCuenta: string|null}>} */
+export async function ultimaCuentaProveedor(idProveedor) {
+  if (DATOS_PRUEBA.compras) return { codigoCuenta: ultimaCuenta(comprasDe(Number(idProveedor))) };
+  return authFetch(`/proveedores/${idProveedor}/ultima-cuenta`);
 }
 
 export async function listarCompras({ buscar = '', filtro = 'todas', idProveedor = '', pagina = 0 } = {}) {
@@ -114,7 +121,7 @@ function armarCompras() {
   const hoy = fechaIso();
   const enElMes = (dia) => (hoy.slice(8) >= dia ? `${hoy.slice(0, 8)}${dia}` : hoy);
   let n = Math.max(...productos.map((c) => c.idCompra));
-  const gasto = (idProveedor, fecha, descripcion, monto, extra = {}) => {
+  const gasto = (idProveedor, fecha, descripcion, monto, codigoCuenta = null, extra = {}) => {
     n += 1;
     return {
       idCompra: n, numeroCompra: `C-${String(n).padStart(4, '0')}`, idProveedor, fechaCompra: fecha,
@@ -122,15 +129,15 @@ function armarCompras() {
       claseDocumento: 4, codigoGeneracionProveedor: codigoPrueba(n), idCompraRelacionada: null,
       periodoIva: mesDe(fecha), comprasExentas: 0, percepcion: false, ...RENTA_GASTOS,
       estado: 'REGISTRADA', nombreUsuario: 'Ligia Manzano', creadoEn: `${fecha}T15:00:00.000Z`,
-      lineas: [{ descripcion, cantidad: 1, costoUnitario: monto }], ...extra,
+      lineas: [{ descripcion, cantidad: 1, costoUnitario: monto, codigoCuenta }], ...extra,
     };
   };
   const ultima = productos.sort((a, b) => b.fechaCompra.localeCompare(a.fechaCompra))[0];
   return [
     ...productos,
-    gasto(6, enElMes('05'), 'Energía eléctrica del local', 85.4),
-    gasto(7, enElMes('10'), 'Mantenimiento de secadores y planchas', 40),
-    gasto(ultima.idProveedor, hoy, 'Descuento por pronto pago', 5, {
+    gasto(6, enElMes('05'), 'Energía eléctrica del local', 85.4, '51010302'),
+    gasto(7, enElMes('10'), 'Mantenimiento de secadores y planchas', 40, '5101040101'),
+    gasto(ultima.idProveedor, hoy, 'Descuento por pronto pago', 5, null, {
       tipoDocumentoProveedor: 'NC', numeroDocumentoProveedor: `DTE-05-M001P001-0000000000${String(n + 1).padStart(5, '0')}`,
       idCompraRelacionada: ultima.idCompra, ...RENTA_PRODUCTOS,
     }),
@@ -189,7 +196,7 @@ async function fichaCompraPrueba(idCompra) {
     ...structuredClone(datos), nombreProveedor: nombreProveedor(c.idProveedor), subtotalSinIva, comprasExentas, iva, ivaPercibido, total,
     numeroCompraRelacionada: relacionada?.numeroCompra ?? null, fechaVencimientoPago: vence(c),
     detalle: lineas.map((l, i) => {
-      if (!l.idProducto) return { idProducto: null, descripcion: l.descripcion, cantidad: l.cantidad, costoUnitario: l.costoUnitario, subtotal: subtotales[i] };
+      if (!l.idProducto) return { idProducto: null, descripcion: l.descripcion, cantidad: l.cantidad, costoUnitario: l.costoUnitario, subtotal: subtotales[i], codigoCuenta: l.codigoCuenta ?? null };
       const producto = PRODUCTOS_PRUEBA.find((p) => p.idProducto === l.idProducto);
       return {
         idProducto: l.idProducto, nombreProducto: producto.nombreProducto, cantidad: l.cantidad, costoUnitario: l.costoUnitario,
@@ -224,7 +231,7 @@ async function registrarPrueba(d) {
   await esperar();
   const proveedor = buscarProveedor(d.idProveedor);
   if (!proveedor.activo) throw new ApiError(400, 'Ese proveedor está inactivo.', { campos: { idProveedor: 'Está inactivo.' } });
-  const campos = revisarDocumento(d);
+  const campos = { ...revisarDocumento(d), ...revisarCuentas(d.detalle.map((l, i) => ({ ...l, clave: i })), d.comprasExentas, d.codigoCuentaExentas) };
   if (Object.keys(campos).length) throw new ApiError(400, 'Revise los datos del documento.', { campos });
   const viva = (c) => c.estado !== 'ANULADA';
   const repetida = compras.filter(viva).find((c) => (d.numeroDocumentoProveedor && c.idProveedor === proveedor.idProveedor && c.numeroDocumentoProveedor === d.numeroDocumentoProveedor)
@@ -244,8 +251,8 @@ async function registrarPrueba(d) {
   let idLote = Math.max(...PRODUCTOS_PRUEBA.flatMap((p) => p.lotes.map((l) => l.idLote)));
   // Solo las líneas de producto crean lote y movimiento de kardex; un gasto no toca el inventario
   const detalle = relacionada ? aplicarDevolucion(relacionada, d.detalle, PRODUCTOS_PRUEBA, numeroCompra, ahora) : d.detalle;
-  const lineas = detalle.map(({ idProducto, idLote: loteDevuelto, descripcion, cantidad, costoUnitario }) => {
-    if (!idProducto) return { descripcion, cantidad, costoUnitario };
+  const lineas = detalle.map(({ idProducto, idLote: loteDevuelto, descripcion, cantidad, costoUnitario, codigoCuenta }) => {
+    if (!idProducto) return { descripcion, cantidad, costoUnitario, codigoCuenta: codigoCuenta ?? null };
     if (relacionada) return { idProducto, idLote: loteDevuelto, cantidad, costoUnitario }; // una devolución no crea lote
     const producto = PRODUCTOS_PRUEBA.find((p) => p.idProducto === idProducto);
     producto.lotes.push({ idLote: ++idLote, fechaIngreso: ahora, costoUnitario, cantidadInicial: cantidad, cantidadDisponible: cantidad, numeroCompra });
@@ -256,7 +263,7 @@ async function registrarPrueba(d) {
     idCompra, numeroCompra, idProveedor: proveedor.idProveedor, fechaCompra: d.fechaCompra, tipoDocumentoProveedor: d.tipoDocumentoProveedor,
     numeroDocumentoProveedor: d.numeroDocumentoProveedor || null, claseDocumento: d.claseDocumento,
     codigoGeneracionProveedor: d.codigoGeneracionProveedor?.toUpperCase() || null, idCompraRelacionada: d.idCompraRelacionada || null,
-    periodoIva: d.periodoIva, comprasExentas: d.comprasExentas || 0, percepcion: Boolean(d.percepcion),
+    periodoIva: d.periodoIva, comprasExentas: d.comprasExentas || 0, percepcion: Boolean(d.percepcion), codigoCuentaExentas: d.codigoCuentaExentas ?? null,
     tipoOperacionRenta: d.tipoOperacionRenta, clasificacionRenta: d.clasificacionRenta, sectorRenta: d.sectorRenta, tipoCostoGasto: d.tipoCostoGasto,
     estado: 'REGISTRADA', nombreUsuario: obtenerSesion()?.usuario.nombreCompleto ?? '', creadoEn: ahora, lineas,
   });

@@ -43,6 +43,12 @@ export const PROVEEDORES_PRUEBA = [
     nit: '000000071', nrc: '0000071', nacionalidad: 'El Salvador', contactoNombre: null, telefono: '7000-0037', correo: null,
     direccion: null, diasCredito: 0, notas: 'Revisa secadores y planchas cada mes.', activo: true,
   },
+  {
+    // El banco de los cobros con tarjeta: manda el CCF de la comisión y la liquidación (DTE 09)
+    idProveedor: 8, nombreComercial: 'Banco de Ejemplo', razonSocial: 'Banco de Ejemplo, S.A.',
+    nit: '06140000000108', nrc: '0000108', nacionalidad: 'El Salvador', contactoNombre: null, telefono: '2200-0008', correo: null,
+    direccion: null, diasCredito: 0, notas: 'Liquida las ventas con tarjeta.', activo: true,
+  },
 ];
 
 /** Qué proveedor surte cada marca del inventario de prueba (idMarca → idProveedor). */
@@ -81,4 +87,24 @@ export function aplicarDevolucion(relacionada, detalle, productos, numeroCompra,
     producto.movimientos.push({ fechaHora, tipo: 'DEVOLUCION_PROVEEDOR', cantidad: -l.cantidad, referencia: numeroCompra, motivo: null, idLote });
     return { ...l, idLote };
   });
+}
+
+/**
+ * Cuenta contable de cada línea de gasto y de las compras exentas (migración 1.10): errores por campo ({} si están completas).
+ * @param {{ clave: string, idProducto?: number, codigoCuenta?: string|null }[]} detalle
+ */
+export function revisarCuentas(detalle, comprasExentas, codigoCuentaExentas) {
+  const campos = {};
+  for (const l of detalle.filter((x) => !x.idProducto && !x.codigoCuenta)) campos[`cuenta-${l.clave}`] = 'Elige la cuenta contable de este gasto.';
+  if (comprasExentas > 0 && !codigoCuentaExentas) campos.codigoCuentaExentas = 'Elige la cuenta de las compras exentas.';
+  return campos;
+}
+
+/** La última cuenta usada con un proveedor: la de la línea más reciente que la traiga (null si no hay). */
+export function ultimaCuenta(comprasDelProveedor) {
+  for (const c of comprasDelProveedor) {
+    const linea = c.lineas.findLast((l) => l.codigoCuenta);
+    if (linea) return linea.codigoCuenta;
+  }
+  return null;
 }
