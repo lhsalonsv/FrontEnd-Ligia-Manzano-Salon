@@ -67,6 +67,16 @@ export async function obtenerCompra(idCompra) {
 }
 
 /**
+ * La contadora completa o cambia la cuenta contable de los gastos de una compra ya registrada (lo demás no se edita).
+ * PATCH /compras/{id}/cuentas { detalle: [{ idDetalleCompra, codigoCuenta }], codigoCuentaExentas } → la compra.
+ * 409 si la compra ya está contabilizada o anulada.
+ */
+export async function asignarCuentasCompra(idCompra, datos) {
+  if (DATOS_PRUEBA.compras) return asignarCuentasPrueba(idCompra, datos);
+  return authFetch(`/compras/${idCompra}/cuentas`, { method: 'PATCH', cuerpo: datos });
+}
+
+/**
  * La API calcula los totales, crea un lote por línea y lo deja en el kardex y la bitácora.
  * Una NC con líneas de producto saca esas unidades del lote de la compra relacionada (409 STOCK_INSUFICIENTE si ya no están).
  */
@@ -196,7 +206,7 @@ async function fichaCompraPrueba(idCompra) {
     ...structuredClone(datos), nombreProveedor: nombreProveedor(c.idProveedor), subtotalSinIva, comprasExentas, iva, ivaPercibido, total,
     numeroCompraRelacionada: relacionada?.numeroCompra ?? null, fechaVencimientoPago: vence(c),
     detalle: lineas.map((l, i) => {
-      if (!l.idProducto) return { idProducto: null, descripcion: l.descripcion, cantidad: l.cantidad, costoUnitario: l.costoUnitario, subtotal: subtotales[i], codigoCuenta: l.codigoCuenta ?? null };
+      if (!l.idProducto) return { idDetalleCompra: idDetallePrueba(c, i), idProducto: null, descripcion: l.descripcion, cantidad: l.cantidad, costoUnitario: l.costoUnitario, subtotal: subtotales[i], codigoCuenta: l.codigoCuenta ?? null };
       const producto = PRODUCTOS_PRUEBA.find((p) => p.idProducto === l.idProducto);
       return {
         idProducto: l.idProducto, nombreProducto: producto.nombreProducto, cantidad: l.cantidad, costoUnitario: l.costoUnitario,
@@ -204,6 +214,23 @@ async function fichaCompraPrueba(idCompra) {
       };
     }),
   };
+}
+
+/** Las líneas de prueba no tienen id propio: se arma con la compra y la posición. */
+const idDetallePrueba = (c, i) => c.idCompra * 1000 + i;
+
+async function asignarCuentasPrueba(idCompra, { detalle = [], codigoCuentaExentas = null }) {
+  await esperar();
+  const c = compras.find((x) => x.idCompra === Number(idCompra));
+  if (!c) throw new ApiError(404, 'No se encontró la compra.');
+  if (c.estado === 'ANULADA') throw new ApiError(409, 'La compra está anulada: sus cuentas ya no se cambian.', { codigo: 'REGLA_DE_LA_BASE' });
+  const nuevas = c.lineas.map((l, i) => ({ ...l, clave: i, codigoCuenta: detalle.find((d) => d.idDetalleCompra === idDetallePrueba(c, i))?.codigoCuenta ?? l.codigoCuenta }));
+  const exentas = totales(c).comprasExentas;
+  const campos = revisarCuentas(nuevas, exentas, codigoCuentaExentas ?? c.codigoCuentaExentas);
+  if (Object.keys(campos).length) throw new ApiError(400, 'Elige la cuenta de cada gasto.', { campos });
+  c.lineas = nuevas.map(({ clave, ...l }) => l);
+  if (exentas > 0) c.codigoCuentaExentas = codigoCuentaExentas ?? c.codigoCuentaExentas;
+  return fichaCompraPrueba(idCompra);
 }
 
 /** Las mismas reglas que los checks de tb_compras (migración 1.3): la API responde 400 con el campo. */

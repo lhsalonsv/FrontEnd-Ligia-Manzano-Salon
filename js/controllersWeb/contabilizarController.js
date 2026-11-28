@@ -87,7 +87,9 @@ function pintarResultado() {
   $('resultado').innerHTML = `${avisoCreados}
     ${faltas.length ? `<div class="aviso aviso-error" role="alert">${icono('alerta')}<div>
       <p><b class="block font-semibold">Falta configurar algo antes de generar los borradores</b></p>
-      <ul class="list-disc pl-5">${faltas.map((f) => `<li>${escapar(f)}</li>`).join('')}</ul></div></div>` : ''}
+      <ul class="list-disc pl-5">${faltas.map((f) => `<li>${escapar(f)}</li>`).join('')}</ul>
+      ${faltas.some((f) => f.includes('de la compra')) ? '<p class="mt-1 text-13">La cuenta de un gasto se completa en <a class="font-semibold underline" href="compras.html">Compras</a>: abre la compra y usa "Cuentas contables".</p>' : ''}
+      ${faltas.some((f) => f.includes('Configuración')) ? '<p class="mt-1 text-13">Las cuentas generales se eligen en <a class="font-semibold underline" href="contabilidad-parametros.html">Parámetros → Configuración</a>.</p>' : ''}</div></div>` : ''}
     <div class="flex flex-wrap items-center gap-3">
       <p class="text-sm text-texto-secundario">Se crearán <b>${grupos.length}</b> ${grupos.length === 1 ? 'borrador' : 'borradores'} con ${documentos} ${documentos === 1 ? 'documento' : 'documentos'}.</p>
       ${puedeEditar ? `<button type="button" id="generar" class="${BOTON} btn-primario ml-auto" ${faltas.length ? 'disabled' : ''}>Generar borradores</button>`

@@ -500,12 +500,14 @@ Una línea es un **producto** (crea un lote PEPS y una entrada en el kardex `ENT
   "nombreUsuario": "Ligia Manzano", "creadoEn": "2026-10-21T10:42:00-06:00",
   "detalle": [
     { "idProducto": 1, "nombreProducto": "Shampoo hidratante 400 ml", "cantidad": 12, "costoUnitario": 6.80, "subtotal": 81.60, "cantidadDisponible": 1 },
-    { "idProducto": null, "descripcion": "Bolsas para clientas", "cantidad": 1, "costoUnitario": 12.00, "subtotal": 12.00 }
-  ]
+    { "idDetalleCompra": 512, "idProducto": null, "descripcion": "Bolsas para clientas", "cantidad": 1, "costoUnitario": 12.00, "subtotal": 12.00, "codigoCuenta": "51010201" }
+  ],
+  "codigoCuentaExentas": null
 }
 ```
 
 - `cantidadDisponible`: lo que queda del lote que creó esa línea ("quedan 1 de 12"). Una línea de gasto trae `descripcion` y no tiene lote.
+- Desde la migración 1.10, cada línea de gasto trae `idDetalleCompra` y `codigoCuenta` (null si recepción la registró sin cuenta), y la compra trae `codigoCuentaExentas`.
 - `numeroCompraRelacionada`: en una NC o ND, el número de la compra que corrige (el panel lo muestra como enlace).
 
 ### `POST /api/compras`
@@ -543,7 +545,16 @@ Una línea es un **producto** (crea un lote PEPS y una entrada en el kardex `ENT
 | `detalle[].codigoCuenta` | `tb_detalle_compras.codigo_cuenta` | migración 1.10. **Obligatorio en cada línea sin producto** (400 con `campos.detalle`): la cuenta contable del gasto, que elige quien registra. Cualquier cuenta activa que acepte movimiento (casi siempre 5xxx; un mueble va al activo). En una línea de producto va nulo: se usa `cta_compras_productos` |
 | `codigoCuentaExentas` | `codigo_cuenta_exentas` | migración 1.10. Obligatorio si `comprasExentas > 0`; si no, `null` |
 
-**Si quien registra no puede ver el catálogo** (recepción: `GET /api/contabilidad/cuentas` da 403 porque trae números de cuenta bancaria), la pantalla manda las líneas de gasto sin `codigoCuenta`. Pendiente de decidir con el equipo quién la completa; mientras tanto la API las acepta sin cuenta solo para ese rol y `fn_contabilizar` avisa la línea que falta.
+**Si quien registra no puede ver el catálogo** (recepción: `GET /api/contabilidad/cuentas` da 403 porque trae números de cuenta bancaria), la pantalla manda las líneas de gasto sin `codigoCuenta` y **la API las acepta sin cuenta solo para ese rol**. Decisión del 27 nov: **la contadora la completa después** con `PATCH /api/compras/{id}/cuentas`; mientras tanto `fn_contabilizar` avisa la línea que falta.
+
+### `PATCH /api/compras/{id}/cuentas`
+La contadora completa o cambia la cuenta contable de los gastos de una compra ya registrada. **Es lo único de una compra que se edita.**
+```json
+{ "detalle": [ { "idDetalleCompra": 512, "codigoCuenta": "51010201" } ], "codigoCuentaExentas": null }
+```
+- Actualiza `tb_detalle_compras.codigo_cuenta` de esas líneas (deben ser líneas sin producto de esa compra) y `tb_compras.codigo_cuenta_exentas`. Después de guardar, cada línea de gasto debe tener cuenta, y la de exentas si `comprasExentas > 0` (400 con `campos` si no). Cada cuenta, activa y con movimiento.
+- 409 `REGLA_DE_LA_BASE` si la compra está anulada o **ya contabilizada** (`fn_contabilizado('COMPRA', id)`): primero se borra el borrador o se anula la partida.
+- 200 con el mismo objeto de `GET /api/compras/{id}`. Bitácora: módulo `COMPRAS`, acción `EDITAR` (las cuentas antes y después). Roles: **Administrador y Contador**.
 
 **Al anular una compra** la API pone `anulada_en = now()`: con esa fecha sale su reversión contable (migración 1.10).
 

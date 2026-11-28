@@ -15,7 +15,7 @@ import { crearPanel, htmlCabecera, htmlError, htmlExito } from '../utils/panel.j
 import { listarProductos, obtenerProducto } from '../services/inventarioService.js';
 import {
   listarProveedores, obtenerProveedor, guardarProveedor, cambiarActivoProveedor, listarCompras, obtenerCompra, registrarCompra,
-  mesDe, RENTA_PRODUCTOS, RENTA_GASTOS, ultimaCuentaProveedor,
+  mesDe, RENTA_PRODUCTOS, RENTA_GASTOS, ultimaCuentaProveedor, asignarCuentasCompra,
 } from '../services/comprasService.js';
 import { listarCuentas } from '../services/contabilidadService.js';
 import { revisarCuentas } from '../mocks/compras.js';
@@ -232,8 +232,25 @@ async function mostrarCompra(idCompra, aviso = '') {
         </li>` : `
         <li class="grid grid-cols-[1fr_auto] gap-x-3 border-b border-neutro-100 py-2 tabular-nums">
           <b class="min-w-0 font-semibold" data-campo="descripcion">${escapar(d.descripcion)}</b><b class="text-right font-semibold">${dinero(d.subtotal)}</b>
-          <small class="text-13 text-texto-secundario">${nota ? 'concepto de la nota' : 'gasto del local'}${d.codigoCuenta ? ` · <span data-campo="codigo_cuenta">${escapar(d.codigoCuenta)}</span>` : ''}</small>
+          <small class="text-13 text-texto-secundario">${nota ? 'concepto de la nota' : 'gasto del local'}${d.codigoCuenta ? ` · <span data-campo="codigo_cuenta">${escapar(d.codigoCuenta)}</span>` : ' · <span class="font-semibold text-estado-error">falta la cuenta contable</span>'}</small>
         </li>`);
+  // La contadora completa o cambia las cuentas de los gastos (lo que registró recepción llega sin cuenta)
+  const gastos = c.detalle.filter((d) => !d.idProducto);
+  const editaCuentas = PUEDEN_CUENTAS.includes(sesion.usuario.rol) && !anulada && (gastos.length || c.comprasExentas > 0);
+  if (editaCuentas) await cargarCuentas();
+  if (estado.seleccion?.tipo !== 'compra' || estado.seleccion.id !== c.idCompra) return;
+  const htmlCuentas = editaCuentas && estado.cuentas.length ? `
+    <div class="separa"></div>
+    <form id="form-cuentas" class="panel-seccion text-sm" novalidate>
+      <h3 class="panel-titulo">Cuentas contables</h3>
+      <p class="mb-2 text-13 text-texto-secundario">Con estas cuentas se contabiliza la compra. Se pueden cambiar mientras no esté contabilizada.</p>
+      ${gastos.map((d) => `<label class="mb-2 block"><span class="mb-1 block text-13">${escapar(d.descripcion)}</span>
+        <span class="campo-caja h-10 min-h-0"><select name="cuenta-${d.idDetalleCompra}" data-id="${d.idDetalleCompra}" data-campo="codigo_cuenta">${opcionesCuenta(d.codigoCuenta)}</select></span></label>`).join('')}
+      ${c.comprasExentas > 0 ? `<label class="mb-2 block"><span class="mb-1 block text-13">Compras exentas</span>
+        <span class="campo-caja h-10 min-h-0"><select name="codigoCuentaExentas" data-campo="codigo_cuenta_exentas">${opcionesCuenta(c.codigoCuentaExentas)}</select></span></label>` : ''}
+      <p id="error-cuentas" class="campo-error mt-0 hidden" role="alert"></p>
+      <button type="submit" class="btn btn-secundario mt-1 h-9 px-3 text-sm">Guardar cuentas</button>
+    </form>` : '';
   panelEl.innerHTML = `
     ${htmlCabecera(`Compra ${c.numeroCompra}`, `${escapar(c.nombreProveedor)} · ${fechaLarga(c.fechaCompra)}`, {
       antes: `<div class="mb-2"><span class="insignia ${anulada ? 'insignia-apagada' : 'insignia-ok'}">${anulada ? 'Anulada' : 'Recibida'}</span></div>`,
@@ -260,12 +277,53 @@ async function mostrarCompra(idCompra, aviso = '') {
         ${fila(c.tipoDocumentoProveedor === 'NC' ? 'Total que resta' : 'Total', dinero(c.total), 'text-base font-semibold')}
       </ul>
     </div>
+    ${htmlCuentas}
     <div class="mx-6 mt-4 flex gap-2 rounded-medio border border-borde-default bg-fondo-sutil p-3 text-sm text-texto-secundario">
       ${icono('candado', 'mt-0.5 size-[18px]')}
-      <p><b class="block font-semibold text-texto-principal">Las compras no se editan</b>Si algo llegó mal, corrígelo con un ajuste en Inventario o con la nota de crédito del proveedor.</p>
+      <p><b class="block font-semibold text-texto-principal">Las compras no se editan</b>Si algo llegó mal, corrígelo con un ajuste en Inventario o con la nota de crédito del proveedor. Solo las cuentas contables se pueden completar después.</p>
     </div>
     <div class="h-6 shrink-0"></div>`;
+  $('form-cuentas')?.addEventListener('submit', (e) => guardarCuentas(e, c.idCompra));
   panel.enfocarTitulo(Boolean(aviso));
+}
+
+const PUEDEN_CUENTAS = ['ADMINISTRADOR', 'CONTADOR'];
+
+/** Las cuentas activas que aceptan movimiento, por código (una sola vez; recepción no ve el catálogo y queda vacío). */
+async function cargarCuentas() {
+  if (estado.cuentas.length) return;
+  estado.cuentas = (await listarCuentas().catch(() => [])).filter((c) => c.activa && c.aceptaMovimiento).sort((a, b) => a.codigo.localeCompare(b.codigo));
+}
+
+async function guardarCuentas(e, idCompra) {
+  e.preventDefault();
+  const form = e.currentTarget;
+  const error = $('error-cuentas');
+  const selects = [...form.querySelectorAll('select[data-id]')];
+  const exentas = form.elements.codigoCuentaExentas;
+  const vacios = [...selects, ...(exentas ? [exentas] : [])].filter((s) => !s.value);
+  for (const s of [...selects, exentas].filter(Boolean)) {
+    if (vacios.includes(s)) s.setAttribute('aria-invalid', 'true');
+    else s.removeAttribute('aria-invalid');
+  }
+  if (vacios.length) {
+    error.textContent = 'Elige la cuenta de cada gasto.';
+    error.classList.remove('hidden');
+    return;
+  }
+  const boton = form.querySelector('[type="submit"]');
+  boton.disabled = true;
+  try {
+    await asignarCuentasCompra(idCompra, {
+      detalle: selects.map((s) => ({ idDetalleCompra: Number(s.dataset.id), codigoCuenta: s.value })),
+      codigoCuentaExentas: exentas?.value || null,
+    });
+    await mostrarCompra(idCompra, 'Cuentas contables guardadas.');
+  } catch (err) {
+    error.textContent = err.message;
+    error.classList.remove('hidden');
+    boton.disabled = false;
+  }
 }
 
 // --- Proveedores -------------------------------------------------------------
@@ -873,7 +931,7 @@ async function abrirRegistrar({ idProveedor = null, idProductos = [] } = {}) {
   estado.gastos = [];
   estado.siguienteGasto = 1;
   estado.cuentaProveedor = null;
-  estado.cuentas = (await listarCuentas().catch(() => [])).filter((c) => c.activa && c.aceptaMovimiento).sort((a, b) => a.codigo.localeCompare(b.codigo));
+  await cargarCuentas();
   estado.rentaTocada = false;
   estado.rentaRelacionada = null;
   estado.relacionada = null;
